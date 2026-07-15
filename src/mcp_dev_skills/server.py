@@ -7,38 +7,9 @@ from pathlib import Path
 import mcp.types as types
 from mcp.server import Server
 
-from .config import SkillsConfig, load_skills_config
+from .config import load_skills_config
+from .loader import load_skills
 from .security import PathEscapeError, get_workspace_root
-from .tools import file_operations, project_analyzer
-
-# Static registry of every skill this server knows how to run. Exposure is
-# decided per-request by the workspace's .skills.json (see build_server).
-_TOOL_DEFINITIONS: dict[str, types.Tool] = {
-    project_analyzer.NAME: types.Tool(
-        name=project_analyzer.NAME,
-        description=(
-            "Recursively scan the workspace and return a lightweight tree plus "
-            "structural hints (languages, config files). Respects .gitignore."
-        ),
-        inputSchema=project_analyzer.INPUT_SCHEMA,
-    ),
-    file_operations.NAME: types.Tool(
-        name=file_operations.NAME,
-        description="Safely read a workspace file's contents (path-sandboxed).",
-        inputSchema=file_operations.INPUT_SCHEMA,
-    ),
-}
-
-
-def _run_tool(name: str, arguments: dict, workspace_root: Path) -> str:
-    if name == project_analyzer.NAME:
-        depth = arguments.get("depth", 3)
-        return project_analyzer.analyze_project_structure(workspace_root, depth=depth)
-    if name == file_operations.NAME:
-        return file_operations.safe_read_file(
-            workspace_root, arguments["file_path"]
-        )
-    raise ValueError(f"Unknown tool: {name}")
 
 
 def build_server(workspace_root: Path | None = None) -> Server:
@@ -46,36 +17,40 @@ def build_server(workspace_root: Path | None = None) -> Server:
     root = get_workspace_root(workspace_root)
     server: Server = Server("mcp-dev-skills")
 
-    def current_config() -> SkillsConfig:
-        # Re-read on each request so config edits take effect without restart.
-        return load_skills_config(root)
+    def current_skills() -> dict[str, tuple]:
+        # Re-read config on each request so changes take effect without restart
+        config = load_skills_config(root)
+        enabled_paths, disabled_skills = config.get_skill_loading_config()
+        return load_skills(root, enabled_paths, disabled_skills)
 
     @server.list_tools()
     async def list_tools() -> list[types.Tool]:
-        config = current_config()
-        return [
-            tool
-            for name, tool in _TOOL_DEFINITIONS.items()
-            if config.is_enabled(name)
-        ]
+        skills = current_skills()
+        tools = []
+        for skill_name, (mod, skill_dict) in skills.items():
+            tool = types.Tool(
+                name=skill_name,
+                description=skill_dict.get("description", ""),
+                inputSchema=skill_dict.get("input_schema", {}),
+            )
+            tools.append(tool)
+        return tools
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-        config = current_config()
+        skills = current_skills()
 
-        if name not in _TOOL_DEFINITIONS:
-            raise ValueError(f"Unknown tool: {name}")
+        if name not in skills:
+            raise ValueError(f"Unknown or disabled skill: {name}")
 
-        if not config.is_enabled(name):
-            raise ValueError(
-                f"Tool [{name}] is disabled by the current project's "
-                f"configuration (.skills.json)"
-            )
+        mod, skill_dict = skills[name]
 
         try:
-            result = _run_tool(name, arguments or {}, root)
+            result = mod.execute(root, **(arguments or {}))
         except PathEscapeError as exc:
             raise ValueError(f"Sandbox violation: {exc}") from exc
+        except (FileNotFoundError, IsADirectoryError) as exc:
+            raise ValueError(str(exc)) from exc
 
         return [types.TextContent(type="text", text=result)]
 

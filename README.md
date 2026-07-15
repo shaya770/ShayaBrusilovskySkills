@@ -1,116 +1,232 @@
 # mcp-dev-skills
 
-A portable, model-agnostic **MCP (Model Context Protocol) server** exposing a suite
-of sandboxed developer skills. It is fully self-contained: push it to GitHub, clone
-it into any workspace, and it exposes tools scoped to that project via a
-`.skills.json` policy file.
+A portable, model-agnostic **MCP (Model Context Protocol) server** exposing a **hierarchical, modular library** of sandboxed developer skills. Push it to GitHub, clone it into any workspace, and it exposes only the skills you explicitly enable via `.skills.json`.
 
 - **Transport:** `stdio` (works with Claude Desktop, Cursor, Windsurf, and custom clients)
-- **Sandbox-first:** every path operation is validated against the workspace root
-  (`Path.cwd()`); no absolute project paths are ever hardcoded.
-- **Dynamic tool discovery:** which tools are exposed is decided at runtime by the
-  target workspace's `.skills.json`.
+- **Sandbox-first:** every path operation is validated against the workspace root (`Path.cwd()`); no absolute project paths are ever hardcoded.
+- **Hierarchical skill groups:** organize 100s of skills into nested folders (e.g., `разработка/джанго/models/`, `деплой/docker/`)
+- **Selective loading:** only skills under enabled paths are loaded into memory; no bloat.
+
+## Architecture
+
+Skills live in a hierarchy under `src/mcp_dev_skills/skills/`:
+
+```
+skills/
+├── разработка/               (development group)
+│   ├── общее/               (common; always included by default)
+│   │   ├── project_analyzer.py
+│   │   ├── safe_read_file.py
+│   │   └── setup_skills.py
+│   ├── джанго/              (Django-specific)
+│   │   ├── models_analyzer.py
+│   │   └── migration_finder.py
+│   └── фронтенд/
+│       └── ...
+├── деплой/                  (deployment group)
+│   ├── docker/
+│   └── k8s/
+└── ci-cd/
+    └── ...
+```
+
+Each `.py` file is a skill module with:
+- `SKILL`: dict with `name`, `group`, `description`, `input_schema`
+- `execute(workspace_root, **kwargs)`: function that runs the skill
 
 ## Skills (v1.0.0)
 
-| Skill | Purpose | Args |
+| Skill | Path | Purpose |
 | --- | --- | --- |
-| `analyze_project_structure` | Lightweight recursive tree + structural hints (languages, config files), respecting `.gitignore`. | `depth` (int, default 3) |
-| `safe_read_file` | Read a file's contents with path-sandboxing checks. | `file_path` (string, required) |
+| `analyze_project_structure` | разработка.общее | Lightweight tree + structural hints (languages, config files), respects `.gitignore` |
+| `safe_read_file` | разработка.общее | Read a file's contents with path-sandboxing checks |
+| `setup_skills` | разработка.общее | List available skills & generate `.skills.json` configuration |
 
-## Requirements
+## Quick Start
 
-- Python **3.10+**
-
-## Install / build
+### 1. Install
 
 ```bash
-# clone, then from the repo root:
+git clone <repo>
+cd mcp-dev-skills
 python -m venv .venv
-source .venv/Scripts/activate      # Windows (Git Bash);  use .venv/bin/activate on macOS/Linux
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-This installs the `mcp-dev-skills` console script (equivalent to
-`python -m mcp_dev_skills`).
-
-## Run
-
-The server speaks MCP over stdio, so it is normally launched by an MCP client, not
-by hand. To smoke-test that it starts:
+### 2. Run interactive setup
 
 ```bash
-python -m mcp_dev_skills   # waits for a client on stdin/stdout; Ctrl-C to exit
+python -m mcp_dev_skills setup
 ```
 
-## Configure in Claude Desktop
+This launches an interactive CLI to select which skill groups to enable. It generates `.skills.json` automatically.
 
-Edit your `claude_desktop_config.json` and add an entry using the **absolute path**
-to the Python interpreter in your virtualenv (or a global Python that has the package
-installed). The server sandboxes to its working directory (`cwd`), so point `cwd` at
-the project you want the skills to operate on.
+Alternatively, create `.skills.json` manually:
+
+```json
+{
+  "enabled_paths": [
+    "разработка.общее",
+    "разработка.джанго"
+  ],
+  "disabled_skills": []
+}
+```
+
+### 3. Configure in Claude Desktop
+
+Edit `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "dev-skills": {
-      "command": "C:\\path\\to\\project\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\.venv\\Scripts\\python.exe",
       "args": ["-m", "mcp_dev_skills"],
-      "cwd": "C:\\path\\to\\target\\workspace"
+      "cwd": "C:\\path\\to\\your\\project"
     }
   }
 }
 ```
 
-On macOS/Linux use `.venv/bin/python` and POSIX paths.
+(Use `.venv/bin/python` on macOS/Linux.)
 
-## The `.skills.json` policy file
+## The `.skills.json` Configuration File
 
-Place a `.skills.json` in the **target workspace** (the `cwd` above) to control which
-tools are exposed there. Copy [`.skills.json.example`](.skills.json.example) as a start:
+### Dot-notation paths
 
+`enabled_paths` uses dot-notation to select skill groups from the tree:
+
+| Path | Loads |
+| --- | --- |
+| `"разработка.общее"` | All skills under `skills/разработка/общее/` |
+| `"разработка.джанго"` | All skills under `skills/разработка/джанго/` (including subdirs) |
+| `"разработка.*"` | All skills under `skills/разработка/` (any subdir) |
+| `"*"` | All skills everywhere (not recommended) |
+
+### Example configurations
+
+**Django backend project:**
 ```json
 {
-  "enabled_skills": [
-    "analyze_project_structure",
-    "safe_read_file"
-  ],
-  "disabled_skills": [
-    "execute_db_query"
+  "enabled_paths": [
+    "разработка.общее",
+    "разработка.джанго"
   ]
 }
 ```
 
-Rules:
+**Full stack (hypothetical):**
+```json
+{
+  "enabled_paths": [
+    "разработка.общее",
+    "разработка.джанго",
+    "разработка.фронтенд",
+    "деплой.docker"
+  ]
+}
+```
 
-- **No `.skills.json`** → only the default read-only safe toolset is exposed
-  (`analyze_project_structure`).
-- **`.skills.json` present** → only tools listed in `enabled_skills` are exposed, and
-  anything in `disabled_skills` is removed even if also enabled.
-- Calling a disabled tool returns:
-  `Tool [tool_name] is disabled by the current project's configuration (.skills.json)`
-- The file is re-read on every request, so policy edits take effect without a restart.
+**With exclusions:**
+```json
+{
+  "enabled_paths": ["разработка.*"],
+  "disabled_skills": ["dangerous_skill"]
+}
+```
 
-## Security model
+### Defaults
 
-All file paths passed to tools are resolved relative to the workspace root and
-verified to stay inside it. Absolute paths (`/etc/passwd`) and traversal
-(`../../etc/passwd`) are rejected with a sandbox-violation error before any I/O.
+- **No `.skills.json`** → only `разработка.общее` is enabled (safe, read-only defaults).
+- **Empty `enabled_paths`** → no skills exposed.
+- Config is re-read on every request; edits take effect without restart.
 
-## Repository layout
+## Security Model
+
+- All file paths are resolved relative to the workspace root and verified to stay inside it.
+- Absolute paths (`/etc/passwd`) and traversal (`../../secret`) are rejected before any I/O.
+- Tools run in the client's workspace sandbox; no network/system calls by default.
+
+## Repository Layout
 
 ```
+.
 ├── .gitignore
+├── .skills.json              (generated by setup CLI)
+├── .skills.json.example
 ├── README.md
 ├── pyproject.toml
 ├── requirements.txt
-├── .skills.json.example
+├── tech.md                   (original specification)
+│
 └── src/mcp_dev_skills/
-    ├── __main__.py            # entry point: stdio transport & lifecycle
-    ├── server.py              # server instance, tool registration & routing
-    ├── config.py              # workspace discovery & .skills.json parser
-    ├── security.py            # path resolution & sandbox validation
-    └── tools/
-        ├── project_analyzer.py
-        └── file_operations.py
+    ├── __main__.py           # entry point (server or setup)
+    ├── server.py             # MCP server, tool registration & routing
+    ├── config.py             # .skills.json loader
+    ├── loader.py             # dynamic skill discovery & loading
+    ├── security.py           # path sandboxing
+    ├── setup.py              # interactive setup CLI
+    │
+    └── skills/               # hierarchical skill library
+        ├── разработка/
+        │   ├── __init__.py
+        │   ├── общее/
+        │   │   ├── __init__.py
+        │   │   ├── project_analyzer.py
+        │   │   ├── safe_read_file.py
+        │   │   └── setup_skills.py
+        │   └── (future skill groups)
+        │
+        └── (future top-level groups: деплой/, ci-cd/, etc.)
 ```
+
+## Development
+
+### Adding a new skill
+
+1. Create a `.py` file in the appropriate `skills/` subdirectory.
+2. Define `SKILL` dict and `execute()` function:
+
+```python
+# skills/разработка/мой_набор/мой_скилл.py
+
+SKILL = {
+    "name": "my_new_skill",
+    "group": "разработка.мой_набор",
+    "description": "What this skill does",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "arg1": {
+                "type": "string",
+                "description": "..."
+            }
+        }
+    }
+}
+
+def execute(workspace_root, **kwargs):
+    arg1 = kwargs.get("arg1")
+    # implement skill logic
+    return result_string
+```
+
+3. The skill is automatically discovered on next server start/reload.
+
+### Adding a new skill group
+
+Create the folder structure and add `__init__.py`:
+
+```bash
+mkdir -p src/mcp_dev_skills/skills/деплой/docker
+touch src/mcp_dev_skills/skills/деплой/__init__.py
+touch src/mcp_dev_skills/skills/деплой/docker/__init__.py
+```
+
+Then add `.py` files with skills inside `docker/`.
+
+## License
+
+MIT

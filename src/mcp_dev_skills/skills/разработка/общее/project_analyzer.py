@@ -1,27 +1,27 @@
-"""Skill: analyze_project_structure.
-
-Builds a lightweight tree of a workspace so a model can grasp an unfamiliar
-project's architecture without dumping whole files into context. Respects
-common ignore patterns (``.git``, ``node_modules``, virtualenvs, build dirs)
-and any patterns found in the workspace ``.gitignore``.
-"""
+"""Skill: analyze_project_structure."""
 
 from __future__ import annotations
 
 import fnmatch
 from pathlib import Path
 
-NAME = "analyze_project_structure"
-
-INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "depth": {
-            "type": "integer",
-            "description": "Max directory depth to scan",
-            "default": 3,
-            "minimum": 1,
-        }
+SKILL = {
+    "name": "analyze_project_structure",
+    "group": "разработка.общее",
+    "description": (
+        "Recursively scan the workspace and return a lightweight tree plus "
+        "structural hints (languages, config files). Respects .gitignore."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "depth": {
+                "type": "integer",
+                "description": "Max directory depth to scan",
+                "default": 3,
+                "minimum": 1,
+            }
+        },
     },
 }
 
@@ -147,3 +147,9 @@ def analyze_project_structure(workspace_root: Path, depth: int = 3) -> str:
     lines.append(f"- Scan depth: {depth}")
 
     return "\n".join(lines)
+
+
+def execute(workspace_root: Path, **kwargs) -> str:
+    """Execute the skill."""
+    depth = kwargs.get("depth", 3)
+    return analyze_project_structure(workspace_root, depth=depth)

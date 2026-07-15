@@ -1,1 +1,0 @@
-"""Isolated, modular skill implementations."""

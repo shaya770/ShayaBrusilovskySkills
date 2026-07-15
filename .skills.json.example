@@ -1,9 +1,7 @@
 {
-  "enabled_skills": [
-    "analyze_project_structure",
-    "safe_read_file"
+  "enabled_paths": [
+    "разработка.общее",
+    "разработка.джанго"
   ],
-  "disabled_skills": [
-    "execute_db_query"
-  ]
+  "disabled_skills": []
 }
