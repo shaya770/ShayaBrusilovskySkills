@@ -1,0 +1,9 @@
+{
+  "enabled_skills": [
+    "analyze_project_structure",
+    "safe_read_file"
+  ],
+  "disabled_skills": [
+    "execute_db_query"
+  ]
+}
