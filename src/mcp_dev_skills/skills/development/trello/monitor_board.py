@@ -14,8 +14,8 @@ SKILL = {
     "group": "development.trello",
     "description": (
         "Monitor Trello board silently in background. "
-        "Polls every 3 seconds. Silent until work appears, then alerts. "
-        "Runs indefinitely until WORK found."
+        "Polls every 3 seconds. Silent until work appears, then alerts with list of cards. "
+        "After work is done, run again. Indefinite polling loop."
     ),
     "input_schema": {
         "type": "object",
@@ -107,9 +107,14 @@ def monitor_board(workspace_root: Path, poll_interval: int = 3) -> str:
 
         if work is not None and len(work) > 0:
             # WORK FOUND — output and stop
-            lines = ["WORK found:\n"]
+            lines = [
+                "🚨 WORK FOUND:\n",
+            ]
             for column, name in work:
                 lines.append(f"  [{column}] {name}")
+            lines.append("")
+            lines.append("After completing work, run the skill again:")
+            lines.append("  monitor_trello_board()")
             return "\n".join(lines)
 
         # No work found or API error — sleep and retry silently
