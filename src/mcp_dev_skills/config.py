@@ -13,7 +13,7 @@ from pathlib import Path
 CONFIG_FILENAME = ".skills.json"
 
 # Paths that are always safe to expose when no config file is present.
-DEFAULT_SAFE_PATHS: tuple[str, ...] = ("разработка.общее",)
+DEFAULT_SAFE_PATHS: tuple[str, ...] = ("development.common",)
 
 
 @dataclass
@@ -39,9 +39,9 @@ def load_skills_config(workspace_root: Path) -> SkillsConfig:
     Example .skills.json:
         {
           "enabled_paths": [
-            "разработка.общее",
-            "разработка.джанго",
-            "деплой.docker"
+            "development.common",
+            "development.trello",
+            "deployment.docker"
           ],
           "disabled_skills": ["dangerous_skill"]
         }

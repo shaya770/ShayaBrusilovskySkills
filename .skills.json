@@ -1,6 +1,7 @@
 {
   "enabled_paths": [
-    "development.common"
+    "development.common",
+    "development.trello"
   ],
   "disabled_skills": []
 }

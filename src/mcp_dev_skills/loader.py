@@ -3,15 +3,15 @@
 Skills are organized in a tree under src/mcp_dev_skills/skills/, e.g.:
 
     skills/
-    ├── разработка/
-    │   ├── общее/
+    ├── development/
+    │   ├── common/
     │   │   ├── project_analyzer.py
     │   │   └── file_operations.py
-    │   ├── джанго/
-    │   │   ├── models_analyzer.py
+    │   ├── trello/
+    │   │   ├── configure_trello.py
     │   │   └── ...
     │   └── ...
-    └── деплой/
+    └── deployment/
         ├── docker/
         └── ...
 
@@ -20,8 +20,8 @@ Each .py file should define:
   - execute(workspace_root, **kwargs): function that runs the skill
 
 The loader discovers all skills and filters them by dot-notation paths:
-  - "разработка.общее" → all skills in skills/разработка/общее/
-  - "разработка.*" → all skills under skills/разработка/
+  - "development.common" → all skills in skills/development/common/
+  - "development.*" → all skills under skills/development/
   - "*" → all skills
 """
 
@@ -42,7 +42,7 @@ def _skills_root() -> Path:
 
 
 def _path_to_module_path(dot_path: str) -> tuple[Path, list[str]]:
-    """Convert 'разработка.общее' to (skills_root, ['разработка', 'общее'])."""
+    """Convert 'development.common' to (skills_root, ['development', 'common'])."""
     parts = dot_path.split(".")
     return _skills_root(), parts
 
@@ -50,8 +50,8 @@ def _path_to_module_path(dot_path: str) -> tuple[Path, list[str]]:
 def _walk_skills(base_path: Path, path_parts: list[str], depth: int = 0) -> list[SkillModule]:
     """Recursively walk the skill tree and yield modules matching path_parts.
 
-    If path_parts is ["разработка", "общее"], walk only that branch.
-    If path_parts is ["разработка", "*"], walk all under разработка.
+    If path_parts is ["development", "common"], walk only that branch.
+    If path_parts is ["development", "*"], walk all under development.
     If path_parts is ["*"], walk everything.
     """
     modules: list[SkillModule] = []
@@ -111,7 +111,7 @@ def load_skills(
     Args:
         workspace_root: The client's workspace directory (used for skill execution).
         enabled_paths: List of dot-notation paths to enable, e.g.
-                      ["разработка.общее", "разработка.джанго", "деплой.*"]
+                      ["development.common", "development.trello", "deployment.*"]
         disabled_skills: Specific skill names to exclude.
 
     Returns:
