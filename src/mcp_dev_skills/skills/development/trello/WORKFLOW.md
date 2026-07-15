@@ -89,19 +89,29 @@ When in `Approved`:
 
 ## Skills Mapping to Workflow
 
+**Smart Skills** (embed workflow rules):
+- `set_plan(card_id, plan)` — Write plan, auto-save original to comment
+- `ask_questions(card_id, questions_list)` — Create Questions/Answers checklists, move to Planning
+- `change_status(card_id, new_status)` — Validate workflow rules, move card
+
+**Basic Skills** (atomic operations):
+
 | Workflow Step | Skill | Usage |
 |---|---|---|
 | Take task | `monitor_trello_board()` | Find WORK on board |
 | | `get_card(card_id)` | Read full card details |
-| Write plan | `update_card_description(card_id, plan, save_original=True)` | Write plan, save original |
-| Ask questions | `create_checklist(card_id, "Questions")` | Create Questions checklist |
-| | `add_checklist_item(checklist_id, "1) ...")` | Add question items |
-| | `move_card(card_id, "Planning")` | Move to Planning |
-| Work | `move_card(card_id, "In Progress")` | Move to In Progress |
+| Write plan | `set_plan(card_id, plan)` | Auto-save original, write plan |
+| Ask questions | `ask_questions(card_id, questions)` | Auto-create checklists, move to Planning |
+| Work | `change_status(card_id, "In Progress")` | Move to In Progress (validated) |
 | | `add_comment(card_id, "text")` | Add progress comments |
 | Submit | `add_comment(card_id, "report")` | Add final report |
-| | `move_card(card_id, "Review")` | Move to Review |
+| | `change_status(card_id, "Review")` | Move to Review (validated) |
 | Repeat | `monitor_trello_board()` | Check board again |
+
+**Legacy Skills** (kept for compatibility, better to use smart skills):
+- `update_card_description(card_id, plan)` — Deprecated, use `set_plan`
+- `create_checklist(card_id, name)` — Use with `add_checklist_item`
+- `move_card(card_id, list_name)` — Deprecated, use `change_status`
 
 ## Key API Endpoints
 
