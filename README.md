@@ -33,14 +33,22 @@ Each `.py` file is a skill module with:
 - `SKILL`: dict with `name`, `group`, `description`, `input_schema`
 - `execute(workspace_root, **kwargs)`: function that runs the skill
 
-## Skills (v1.0.0)
+## Skills (v1.1.0)
 
-| Skill | Path | Purpose |
-| --- | --- | --- |
-| `analyze_project_structure` | development.common | Lightweight tree + structural hints (languages, config files), respects `.gitignore` |
-| `safe_read_file` | development.common | Read a file's contents with path-sandboxing checks |
-| `setup_skills` | development.common | List available skills & generate `.skills.json` configuration |
-| `check_trello_board` | development.trello | Quick probe of Trello board for actionable work |
+### development.common
+
+| Skill | Purpose |
+| --- | --- |
+| `analyze_project_structure` | Lightweight tree + structural hints (languages, config files), respects `.gitignore` |
+| `safe_read_file` | Read a file's contents with path-sandboxing checks |
+| `setup_skills` | List available skills & generate `.skills.json` configuration |
+
+### development.trello
+
+| Skill | Purpose |
+| --- | --- |
+| `configure_trello` | **Interactive setup:** Enter board URL, API key, token; validates & saves to `.claude/trello.json` |
+| `check_trello_board` | Quick probe of Trello board for actionable work (uses `.claude/trello.json` config) |
 
 ## Quick Start
 
@@ -149,12 +157,35 @@ Edit `claude_desktop_config.json`:
 
 ## Trello Integration
 
-If using `development.trello` skills, create `.claude/trello.env`:
+### Setup
 
+Enable `development.trello` in `.skills.json`:
+
+```json
+{
+  "enabled_paths": [
+    "development.common",
+    "development.trello"
+  ]
+}
 ```
-TRELLO_API_KEY=your_api_key
-TRELLO_TOKEN=your_token
-```
+
+### Configuration
+
+1. **Get Trello credentials:**
+   - Go to https://trello.com/app-key
+   - Copy **API Key**
+   - Generate **Token** (authorize app)
+
+2. **Configure via skill:**
+   - Call `configure_trello` with:
+     - Board URL (e.g., `https://trello.com/b/68f67984d4331f5a481236bf/myboard`)
+     - API Key
+     - Token
+   - Skill validates and saves to `.claude/trello.json`
+
+3. **Use board:**
+   - `check_trello_board` — reads config automatically, checks for actionable work
 
 See [WORKFLOW.md](src/mcp_dev_skills/skills/development/trello/WORKFLOW.md) for full Trello task protocol.
 

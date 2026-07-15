@@ -15,16 +15,12 @@ SKILL = {
     "group": "development.trello",
     "description": (
         "Quick probe of the Trello board: returns actionable work (cards in "
-        "'Approved' or 'Inbox' without 'wait' label). Use to gate full "
-        "board polling—only fetch all cards when this returns 'WORK'."
+        "'Approved' or 'Inbox' without 'wait' label). Uses board config from "
+        ".claude/trello.json. Use to gate full board polling."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "board_id": {
-                "type": "string",
-                "description": "Trello board ID",
-            },
             "auto_mode": {
                 "type": "boolean",
                 "description": (
@@ -34,7 +30,6 @@ SKILL = {
                 "default": False,
             },
         },
-        "required": ["board_id"],
     },
 }
 
@@ -42,21 +37,19 @@ ACTIONABLE_LISTS = {"Approved", "Inbox"}
 IDLE_MINUTES = 5
 
 
-def _load_env(workspace_root: Path) -> dict[str, str]:
-    """Load Trello creds from .env or .claude/trello.env."""
-    env = {}
-    for candidate in (
-        workspace_root / ".claude" / "trello.env",
-        workspace_root / ".env",
-    ):
-        if not candidate.exists():
-            continue
-        for line in candidate.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                env.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-    return env
+def _load_config(workspace_root: Path) -> tuple[dict, str | None]:
+    """Load Trello config from .claude/trello.json.
+
+    Returns: (config_dict, error_message)
+    """
+    config_path = workspace_root / ".claude" / "trello.json"
+    if not config_path.exists():
+        return {}, "Trello not configured. Run: configure_trello skill first."
+
+    try:
+        return json.loads(config_path.read_text(encoding="utf-8")), None
+    except Exception as e:
+        return {}, f"Error reading trello.json: {e}"
 
 
 def _get_json(url: str, attempts: int = 4) -> dict:
@@ -81,19 +74,22 @@ def _idle_minutes(card: dict) -> float | None:
     return (datetime.now(timezone.utc) - ts).total_seconds() / 60
 
 
-def check_board(workspace_root: Path, board_id: str, auto_mode: bool = False) -> str:
+def check_board(workspace_root: Path, auto_mode: bool = False) -> str:
     """Check Trello board for actionable work."""
     sys.stdout.reconfigure(encoding="utf-8")
 
-    env = _load_env(workspace_root)
-    if "TRELLO_API_KEY" not in env or "TRELLO_TOKEN" not in env:
-        return (
-            "Error: Trello credentials not found. "
-            "Create .claude/trello.env with TRELLO_API_KEY and TRELLO_TOKEN."
-        )
+    config, error = _load_config(workspace_root)
+    if error:
+        return f"Error: {error}"
 
-    key, token = env["TRELLO_API_KEY"], env["TRELLO_TOKEN"]
-    auth = f"key={key}&token={token}"
+    board_id = config.get("board_id")
+    api_key = config.get("api_key")
+    token = config.get("token")
+
+    if not all([board_id, api_key, token]):
+        return "Error: Incomplete Trello config. Run configure_trello skill."
+
+    auth = f"key={api_key}&token={token}"
 
     try:
         lists = _get_json(
@@ -142,8 +138,5 @@ def check_board(workspace_root: Path, board_id: str, auto_mode: bool = False) ->
 
 def execute(workspace_root: Path, **kwargs) -> str:
     """Execute the skill."""
-    board_id = kwargs.get("board_id")
-    if not board_id:
-        raise ValueError("board_id is required")
     auto_mode = kwargs.get("auto_mode", False)
-    return check_board(workspace_root, board_id, auto_mode=auto_mode)
+    return check_board(workspace_root, auto_mode=auto_mode)

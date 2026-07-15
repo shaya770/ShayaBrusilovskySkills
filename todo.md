@@ -19,11 +19,14 @@
 - [x] `setup_skills` (development.common)
 
 ## Phase 3: Trello Integration (DONE)
-- [x] `check_trello_board` (development.trello)
+- [x] `configure_trello` (development.trello) — интерактивная конфигурация
+- [x] `check_trello_board` (development.trello) — зависит от конфига
 - [x] WORKFLOW.md с документацией протокола Trello
-- [x] Поддержка TRELLO_API_KEY и TRELLO_TOKEN из `.claude/trello.env`
+- [x] Валидация Trello credentials (проверка подключения)
+- [x] Сохранение конфига в `.claude/trello.json`
 - [x] Автоматический retry для Trello API
 - [x] Поддержка auto_mode (пропуск Inbox-черновиков)
+- [x] Универсальность (любой board, не привязано к EzraSolution)
 
 ## Phase 4: Documentation & Polish (IN PROGRESS)
 - [x] README.md: архитектура (иерархия скилов, dot-notation)
