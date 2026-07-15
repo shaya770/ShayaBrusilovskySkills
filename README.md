@@ -4,7 +4,7 @@ A portable, model-agnostic **MCP (Model Context Protocol) server** exposing a **
 
 - **Transport:** `stdio` (works with Claude Desktop, Cursor, Windsurf, and custom clients)
 - **Sandbox-first:** every path operation is validated against the workspace root (`Path.cwd()`); no absolute project paths are ever hardcoded.
-- **Hierarchical skill groups:** organize 100s of skills into nested folders (e.g., `разработка/джанго/models/`, `деплой/docker/`)
+- **Hierarchical skill groups:** organize 100s of skills into nested folders (e.g., `development/django/models/`, `deployment/docker/`)
 - **Selective loading:** only skills under enabled paths are loaded into memory; no bloat.
 
 ## Architecture
@@ -13,21 +13,20 @@ Skills live in a hierarchy under `src/mcp_dev_skills/skills/`:
 
 ```
 skills/
-├── разработка/               (development group)
-│   ├── общее/               (common; always included by default)
+├── development/
+│   ├── common/                    # Core skills always available
 │   │   ├── project_analyzer.py
 │   │   ├── safe_read_file.py
 │   │   └── setup_skills.py
-│   ├── джанго/              (Django-specific)
-│   │   ├── models_analyzer.py
-│   │   └── migration_finder.py
-│   └── фронтенд/
-│       └── ...
-├── деплой/                  (deployment group)
+│   ├── trello/                    # Trello task workflow
+│   │   ├── check_board.py
+│   │   └── WORKFLOW.md
+│   ├── django/                    # Django-specific (future)
+│   └── frontend/                  # Frontend skills (future)
+├── deployment/                    # Deployment & DevOps
 │   ├── docker/
 │   └── k8s/
-└── ci-cd/
-    └── ...
+└── ...
 ```
 
 Each `.py` file is a skill module with:
@@ -38,9 +37,10 @@ Each `.py` file is a skill module with:
 
 | Skill | Path | Purpose |
 | --- | --- | --- |
-| `analyze_project_structure` | разработка.общее | Lightweight tree + structural hints (languages, config files), respects `.gitignore` |
-| `safe_read_file` | разработка.общее | Read a file's contents with path-sandboxing checks |
-| `setup_skills` | разработка.общее | List available skills & generate `.skills.json` configuration |
+| `analyze_project_structure` | development.common | Lightweight tree + structural hints (languages, config files), respects `.gitignore` |
+| `safe_read_file` | development.common | Read a file's contents with path-sandboxing checks |
+| `setup_skills` | development.common | List available skills & generate `.skills.json` configuration |
+| `check_trello_board` | development.trello | Quick probe of Trello board for actionable work |
 
 ## Quick Start
 
@@ -50,11 +50,11 @@ Each `.py` file is a skill module with:
 git clone <repo>
 cd mcp-dev-skills
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/Scripts/activate  # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-### 2. Run interactive setup
+### 2. Run interactive setup (first time)
 
 ```bash
 python -m mcp_dev_skills setup
@@ -62,13 +62,13 @@ python -m mcp_dev_skills setup
 
 This launches an interactive CLI to select which skill groups to enable. It generates `.skills.json` automatically.
 
-Alternatively, create `.skills.json` manually:
+Or create `.skills.json` manually:
 
 ```json
 {
   "enabled_paths": [
-    "разработка.общее",
-    "разработка.джанго"
+    "development.common",
+    "development.trello"
   ],
   "disabled_skills": []
 }
@@ -100,53 +100,68 @@ Edit `claude_desktop_config.json`:
 
 | Path | Loads |
 | --- | --- |
-| `"разработка.общее"` | All skills under `skills/разработка/общее/` |
-| `"разработка.джанго"` | All skills under `skills/разработка/джанго/` (including subdirs) |
-| `"разработка.*"` | All skills under `skills/разработка/` (any subdir) |
-| `"*"` | All skills everywhere (not recommended) |
+| `"development.common"` | All skills under `skills/development/common/` |
+| `"development.trello"` | All skills under `skills/development/trello/` |
+| `"development.*"` | All skills under `skills/development/` (any subdir) |
+| `"*"` | All skills everywhere |
 
 ### Example configurations
 
-**Django backend project:**
+**Basic development:**
 ```json
 {
   "enabled_paths": [
-    "разработка.общее",
-    "разработка.джанго"
+    "development.common"
   ]
 }
 ```
 
-**Full stack (hypothetical):**
+**With Trello task management:**
 ```json
 {
   "enabled_paths": [
-    "разработка.общее",
-    "разработка.джанго",
-    "разработка.фронтенд",
-    "деплой.docker"
+    "development.common",
+    "development.trello"
   ]
+}
+```
+
+**Everything (full-stack):**
+```json
+{
+  "enabled_paths": ["*"]
 }
 ```
 
 **With exclusions:**
 ```json
 {
-  "enabled_paths": ["разработка.*"],
-  "disabled_skills": ["dangerous_skill"]
+  "enabled_paths": ["development.*"],
+  "disabled_skills": ["some_specific_skill"]
 }
 ```
 
 ### Defaults
 
-- **No `.skills.json`** → only `разработка.общее` is enabled (safe, read-only defaults).
+- **No `.skills.json`** → only `development.common` is enabled (safe, read-only set).
 - **Empty `enabled_paths`** → no skills exposed.
-- Config is re-read on every request; edits take effect without restart.
+- Config is re-read on every request, so edits take effect without restart.
+
+## Trello Integration
+
+If using `development.trello` skills, create `.claude/trello.env`:
+
+```
+TRELLO_API_KEY=your_api_key
+TRELLO_TOKEN=your_token
+```
+
+See [WORKFLOW.md](src/mcp_dev_skills/skills/development/trello/WORKFLOW.md) for full Trello task protocol.
 
 ## Security Model
 
 - All file paths are resolved relative to the workspace root and verified to stay inside it.
-- Absolute paths (`/etc/passwd`) and traversal (`../../secret`) are rejected before any I/O.
+- Absolute paths (`/etc/passwd`) and traversal (`../../secret`) are rejected.
 - Tools run in the client's workspace sandbox; no network/system calls by default.
 
 ## Repository Layout
@@ -154,32 +169,29 @@ Edit `claude_desktop_config.json`:
 ```
 .
 ├── .gitignore
-├── .skills.json              (generated by setup CLI)
+├── .skills.json              (generated by setup)
 ├── .skills.json.example
 ├── README.md
 ├── pyproject.toml
 ├── requirements.txt
-├── tech.md                   (original specification)
 │
 └── src/mcp_dev_skills/
-    ├── __main__.py           # entry point (server or setup)
+    ├── __main__.py           # entry point (server or setup CLI)
     ├── server.py             # MCP server, tool registration & routing
     ├── config.py             # .skills.json loader
     ├── loader.py             # dynamic skill discovery & loading
-    ├── security.py           # path sandboxing
+    ├── security.py           # path sandboxing utilities
     ├── setup.py              # interactive setup CLI
     │
     └── skills/               # hierarchical skill library
-        ├── разработка/
-        │   ├── __init__.py
-        │   ├── общее/
-        │   │   ├── __init__.py
-        │   │   ├── project_analyzer.py
-        │   │   ├── safe_read_file.py
-        │   │   └── setup_skills.py
-        │   └── (future skill groups)
-        │
-        └── (future top-level groups: деплой/, ci-cd/, etc.)
+        └── development/
+            ├── common/
+            │   ├── project_analyzer.py
+            │   ├── safe_read_file.py
+            │   └── setup_skills.py
+            └── trello/
+                ├── check_board.py
+                └── WORKFLOW.md
 ```
 
 ## Development
@@ -190,11 +202,11 @@ Edit `claude_desktop_config.json`:
 2. Define `SKILL` dict and `execute()` function:
 
 ```python
-# skills/разработка/мой_набор/мой_скилл.py
+# skills/development/example/my_skill.py
 
 SKILL = {
     "name": "my_new_skill",
-    "group": "разработка.мой_набор",
+    "group": "development.example",
     "description": "What this skill does",
     "input_schema": {
         "type": "object",
@@ -213,16 +225,16 @@ def execute(workspace_root, **kwargs):
     return result_string
 ```
 
-3. The skill is automatically discovered on next server start/reload.
+3. The skill is automatically discovered on next server start.
 
 ### Adding a new skill group
 
 Create the folder structure and add `__init__.py`:
 
 ```bash
-mkdir -p src/mcp_dev_skills/skills/деплой/docker
-touch src/mcp_dev_skills/skills/деплой/__init__.py
-touch src/mcp_dev_skills/skills/деплой/docker/__init__.py
+mkdir -p src/mcp_dev_skills/skills/deployment/docker
+touch src/mcp_dev_skills/skills/deployment/__init__.py
+touch src/mcp_dev_skills/skills/deployment/docker/__init__.py
 ```
 
 Then add `.py` files with skills inside `docker/`.

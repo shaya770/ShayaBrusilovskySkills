@@ -7,7 +7,7 @@ from pathlib import Path
 
 SKILL = {
     "name": "setup_skills",
-    "group": "разработка.общее",
+    "group": "development.common",
     "description": (
         "List available skill groups and generate .skills.json configuration. "
         "Use this to interactively select which skill groups to enable."
@@ -37,9 +37,7 @@ def _build_tree_text(tree_dict: dict, indent: int = 0) -> str:
     prefix = "  " * indent
 
     if tree_dict.get("type") == "skill":
-        lines.append(
-            f"{prefix}📝 {tree_dict['name']}"
-        )
+        lines.append(f"{prefix}📝 {tree_dict['name']}")
         if desc := tree_dict.get("description"):
             lines.append(f"{prefix}   {desc[:60]}")
     else:

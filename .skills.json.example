@@ -1,7 +1,7 @@
 {
   "enabled_paths": [
-    "разработка.общее",
-    "разработка.джанго"
+    "development.common",
+    "development.trello"
   ],
   "disabled_skills": []
 }

@@ -1,6 +1,6 @@
 {
   "enabled_paths": [
-    "разработка.общее"
+    "development.common"
   ],
   "disabled_skills": []
 }

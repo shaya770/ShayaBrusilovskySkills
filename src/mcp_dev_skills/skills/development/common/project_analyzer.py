@@ -7,7 +7,7 @@ from pathlib import Path
 
 SKILL = {
     "name": "analyze_project_structure",
-    "group": "разработка.общее",
+    "group": "development.common",
     "description": (
         "Recursively scan the workspace and return a lightweight tree plus "
         "structural hints (languages, config files). Respects .gitignore."
@@ -25,7 +25,6 @@ SKILL = {
     },
 }
 
-# Always-ignored directory names, independent of .gitignore.
 _ALWAYS_IGNORE_DIRS = {
     ".git",
     "node_modules",
@@ -41,7 +40,6 @@ _ALWAYS_IGNORE_DIRS = {
     ".eggs",
 }
 
-# Extension -> human-readable language, used for structural hints.
 _LANG_BY_EXT = {
     ".py": "Python",
     ".ts": "TypeScript",
