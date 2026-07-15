@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -12,9 +13,9 @@ SKILL = {
     "name": "configure_trello",
     "group": "development.trello",
     "description": (
-        "Interactive configuration of a Trello board. "
-        "Prompts for board URL, API key, and token; validates credentials; "
-        "saves config to .claude/trello.json."
+        "Configure a Trello board: validate credentials, verify board exists, "
+        "create missing columns (Inbox, Planning, Approved, In Progress, Review, Done). "
+        "Saves config to .claude/trello.json."
     ),
     "input_schema": {
         "type": "object",
@@ -36,58 +37,99 @@ SKILL = {
     },
 }
 
+# Required columns (in order)
+REQUIRED_COLUMNS = [
+    "Inbox",
+    "Planning",
+    "Approved",
+    "In Progress",
+    "Review",
+    "Done",
+]
+
 
 def _extract_board_id(board_url: str) -> str | None:
-    """Extract board ID from Trello URL.
-
-    Supports:
-    - https://trello.com/b/68f67984d4331f5a481236bf/name
-    - https://trello.com/b/68f67984d4331f5a481236bf
-    """
+    """Extract board ID from Trello URL."""
     match = re.search(r"/b/([a-z0-9]+)", board_url, re.IGNORECASE)
     if match:
         return match.group(1)
     return None
 
 
-def _validate_credentials(board_id: str, api_key: str, token: str) -> tuple[bool, str, str | None]:
-    """Validate Trello credentials by fetching board name.
-
-    Returns: (is_valid, message, board_name)
-    """
-    auth = f"key={api_key}&token={token}"
-    url = f"https://api.trello.com/1/boards/{board_id}?fields=name&{auth}"
-
+def _api_get(url: str) -> dict | None:
+    """GET request to Trello API."""
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.load(resp)
-            board_name = data.get("name", "Unknown")
-            return True, f"✓ Connected to board: {board_name}", board_name
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return False, "✗ Invalid API key or token (401)", None
-        elif e.code == 404:
-            return False, "✗ Board not found (404) — check board ID", None
+            return json.load(resp)
+    except Exception:
+        return None
+
+
+def _api_post(url: str, data: dict) -> dict | None:
+    """POST request to Trello API."""
+    try:
+        body = urllib.parse.urlencode(data).encode("utf-8")
+        with urllib.request.urlopen(url, data=body, timeout=10) as resp:
+            return json.load(resp)
+    except Exception:
+        return None
+
+
+def _validate_and_setup_board(
+    board_id: str, api_key: str, token: str
+) -> tuple[bool, str, str | None]:
+    """Validate credentials and ensure all required columns exist.
+
+    Returns: (success, message, board_name)
+    """
+    auth = f"key={api_key}&token={token}"
+
+    # 1. Get board info
+    board_url = f"https://api.trello.com/1/boards/{board_id}?fields=name&{auth}"
+    board_data = _api_get(board_url)
+    if not board_data:
+        return False, "Failed to connect to board. Check credentials.", None
+
+    board_name = board_data.get("name", "Unknown")
+
+    # 2. Get existing lists
+    lists_url = f"https://api.trello.com/1/boards/{board_id}/lists?fields=name&filter=open&{auth}"
+    lists_data = _api_get(lists_url)
+    if lists_data is None:
+        return False, "Failed to fetch board columns.", None
+
+    existing_columns = {lst["name"] for lst in lists_data}
+    messages = [f"Board: {board_name}"]
+
+    # 3. Check & create missing columns
+    for col_name in REQUIRED_COLUMNS:
+        if col_name in existing_columns:
+            messages.append(f"  ✓ {col_name}")
         else:
-            return False, f"✗ HTTP {e.code}: {e.reason}", None
-    except urllib.error.URLError as e:
-        return False, f"✗ Network error: {e.reason}", None
-    except Exception as e:
-        return False, f"✗ Error: {e}", None
+            # Create column
+            create_url = f"https://api.trello.com/1/boards/{board_id}/lists?{auth}"
+            result = _api_post(create_url, {"name": col_name})
+            if result:
+                messages.append(f"  + {col_name} (created)")
+            else:
+                messages.append(f"  ✗ {col_name} (failed to create)")
+
+    return True, "\n".join(messages), board_name
 
 
 def configure_trello(
     workspace_root: Path, board_url: str, api_key: str, token: str
 ) -> str:
-    """Validate and save Trello configuration."""
+    """Validate and configure Trello board."""
     board_id = _extract_board_id(board_url)
     if not board_id:
-        return "❌ Invalid board URL. Expected format: https://trello.com/b/BOARD_ID/name"
+        return "Error: Invalid board URL. Expected: https://trello.com/b/BOARD_ID/name"
 
-    is_valid, message, board_name = _validate_credentials(board_id, api_key, token)
-    if not is_valid:
-        return f"❌ Validation failed: {message}"
+    success, message, board_name = _validate_and_setup_board(board_id, api_key, token)
+    if not success:
+        return f"Error: {message}"
 
+    # Save config
     config = {
         "board_id": board_id,
         "board_url": board_url,
@@ -101,15 +143,7 @@ def configure_trello(
     config_path = config_dir / "trello.json"
     config_path.write_text(json.dumps(config, indent=2))
 
-    return (
-        f"✓ Trello configuration saved to `.claude/trello.json`\n"
-        f"\n"
-        f"Board: {board_name}\n"
-        f"Board ID: {board_id}\n"
-        f"URL: {board_url}\n"
-        f"\n"
-        f"Ready to use Trello skills."
-    )
+    return f"✓ Trello board configured and saved.\n\n{message}\n\nReady to use Trello skills."
 
 
 def execute(workspace_root: Path, **kwargs) -> str:

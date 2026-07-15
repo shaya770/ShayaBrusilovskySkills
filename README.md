@@ -177,15 +177,19 @@ Enable `development.trello` in `.skills.json`:
    - Copy **API Key**
    - Generate **Token** (authorize app)
 
-2. **Configure via skill:**
-   - Call `configure_trello` with:
+2. **Configure via `configure_trello` skill:**
+   - Pass:
      - Board URL (e.g., `https://trello.com/b/68f67984d4331f5a481236bf/myboard`)
      - API Key
      - Token
-   - Skill validates and saves to `.claude/trello.json`
+   - Skill will:
+     - ✓ Validate credentials
+     - ✓ Check board exists
+     - ✓ Create missing columns: Inbox, Planning, Approved, In Progress, Review, Done
+     - ✓ Save config to `.claude/trello.json`
 
 3. **Use board:**
-   - `check_trello_board` — reads config automatically, checks for actionable work
+   - `check_trello_board` — reads config, checks for actionable work
 
 See [WORKFLOW.md](src/mcp_dev_skills/skills/development/trello/WORKFLOW.md) for full Trello task protocol.
 
