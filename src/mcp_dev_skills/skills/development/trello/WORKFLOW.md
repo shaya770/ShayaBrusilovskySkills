@@ -4,7 +4,7 @@ Tasks are set and discussed in **Trello**. Claude reads and writes via REST API.
 
 ## Language Rules
 
-- **Structure — English:** column names, labels, checklists (`❓ Questions`, `✍️ Answers`).
+- **Structure — English:** column names, labels, checklists (`Questions`, `Answers`).
 - **Content — Russian:** descriptions (plans), comments, checklist text, questions/answers, all correspondence.
 
 ## Credentials & Board
@@ -37,22 +37,71 @@ TRELLO_TOKEN=your_token_here
 - **Claude** moves card on status change: `Inbox → Planning` (plan written), `Approved → In Progress` (started), `In Progress → Review` (finished).
 - Claude never moves to Approved/Done — that's user's decision.
 
-## Workflow Cycle
+## Full Workflow Cycle
 
-1. **Take task:** Check cards in `Inbox` (new) and `Approved` (ready).
-2. **Write plan:** Save original desc in comment `🤖 Original task:` (one-time). Then write plan in Russian in desc.
-3. **Ask questions (if needed):**
-   - `❓ Questions` — points in Russian: `1) …`, `2) …`
-   - `✍️ Answers` — empty checklist (user adds points)
-4. **Wait for user:** They answer in `Answers` and/or move to `Approved`.
-5. **Work:** Move to `In Progress`, execute, write brief report.
-6. **Submit:** Move to `Review`. User reviews → `Done`.
+### 1. Take Task
+User says "check board" (trigger). Look at:
+- `Inbox` cards (new tasks)
+- `Approved` cards (ready to work)
+- `Planning` cards (awaiting answers)
+
+### 2. Write Plan
+
+**⚠️ CRITICAL: Save original task FIRST**
+
+Before writing plan:
+1. If description has text (task in desc) → copy to comment: `🤖 Original task:\n{text}` (one-time only)
+2. Only then write plan **in Russian** in description
+3. Now plan can be re-written safely (original is in comment)
+4. Mark with label `plan`
+
+If description empty (task in title only) — skip comment.
+
+### 3. Ask Questions (if needed)
+
+**TWO checklists (names English, content Russian):**
+- `❓ Questions` — points in Russian: `1) …`, `2) …`, `3) …`
+- `✍️ Answers` — EMPTY checklist. User adds points in same order with number: `1) …`, `2) …`
+
+Match answer to question **by number at start of item** (not by position — user may answer selectively).
+
+Move card to `📋 Planning`.
+
+### 4. Wait for User
+User answers in `Answers` checklist and/or moves card to `✅ Approved`.
+
+### 5. Work
+When in `Approved`:
+- Move to `🔨 In Progress`
+- Execute work (follow development rules: feature branch, tests before/after, etc.)
+
+### 6. Submit
+- Write brief report (comment or description update)
+- Move to `👀 Review`
+- User reviews → `✔️ Done`
 
 ## Conventions
 
-- All Claude comments start with `🤖 `.
-- Labels (English) = type/app (`rental`, `crm`, `clinic`, `tasker`) + helpers (`plan`, `urgent`, `bug`, `wait`).
-- **`wait` = DON'T TOUCH.** Cards with `wait` label are skipped during board checks.
+- All Claude comments start with `🤖 ` to distinguish from user.
+- Plan — in description; dialog — in checklists/comments; history stays in card.
+- Labels (English) = type/app (`rental`, `crm`, `clinic`, `tasker`) + helpers (`plan`, `urgent`, `bug`, `wait`). Labels are NOT status.
+- **`wait` = DON'T TOUCH.** Cards with `wait` label are skipped during board checks: don't write plan, don't ask questions, don't take into work — until user removes label.
+
+## Skills Mapping to Workflow
+
+| Workflow Step | Skill | Usage |
+|---|---|---|
+| Take task | `monitor_trello_board()` | Find WORK on board |
+| | `get_card(card_id)` | Read full card details |
+| Write plan | `update_card_description(card_id, plan, save_original=True)` | Write plan, save original |
+| Ask questions | `create_checklist(card_id, "Questions")` | Create Questions checklist |
+| | `add_checklist_item(checklist_id, "1) ...")` | Add question items |
+| | `move_card(card_id, "Planning")` | Move to Planning |
+| Work | `move_card(card_id, "In Progress")` | Move to In Progress |
+| | `add_comment(card_id, "text")` | Add progress comments |
+| Submit | `add_comment(card_id, "report")` | Add final report |
+| | `move_card(card_id, "Review")` | Move to Review |
+| Repeat | `monitor_trello_board()` | Check board again |
 
 ## Key API Endpoints
 
@@ -74,6 +123,12 @@ PUT  /cards/{cardId}?idList={listId}
 
 # Update description
 PUT  /cards/{cardId}?desc=...
+
+# Create checklist
+POST /cards/{cardId}/checklists?name=...
+
+# Add checklist item
+POST /checklists/{checklistId}/checkItems?name=...
 ```
 
 ## Encoding (Critical!)
