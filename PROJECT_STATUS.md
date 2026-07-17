@@ -10,7 +10,7 @@
 
 MCP (Model Context Protocol) server exposing a hierarchical library of **developer skills** for managing multi-app projects via **Trello** and **git branches**, with flexible configuration per project.
 
-**Total Skills:** 17 (across 4 groups)
+**Total Skills:** 18 (across 4 groups)
 
 ---
 
@@ -26,9 +26,10 @@ MCP (Model Context Protocol) server exposing a hierarchical library of **develop
 
 ### ✅ Skill Groups Implemented
 
-#### 1. **development.common** (3 skills)
+#### 1. **development.common** (4 skills)
 - Project analysis and file operations
 - Interactive skill configuration setup
+- Universal three-stage development methodology (Design → Deployment → Testing)
 
 #### 2. **development.trello** (12 skills)
 - Trello board configuration with scopes
@@ -63,7 +64,8 @@ ShayaBrusilovskySkills/
 │       ├── common/
 │       │   ├── project_analyzer.py
 │       │   ├── file_operations.py
-│       │   └── setup_skills.py
+│       │   ├── setup_skills.py
+│       │   └── development_methodology.py
 │       ├── trello/
 │       │   ├── configure.py
 │       │   ├── set_plan.py          # Smart: auto-backup original task
@@ -87,7 +89,7 @@ ShayaBrusilovskySkills/
 ├── WORKFLOW.md                       # Trello workflow protocol
 └── PROJECT_STATUS.md                # This file
 
-Total: 17 skill files (+ utilities)
+Total: 18 skill files (+ utilities)
 ```
 
 ---
@@ -113,6 +115,16 @@ Total: 17 skill files (+ utilities)
 - **Use:** Interactive onboarding, discover what's available
 - **Input:** `action` (list_tree or generate_config)
 - **Output:** Skill tree or config file
+
+#### **4. development_methodology**
+- **Description:** Universal three-stage development system (Design → Deployment → Testing)
+- **Use:** Track progress on any feature, module, skill, or system
+- **Application:** Project-agnostic, scope-agnostic, language-agnostic
+- **Stages:**
+  - **Проектирование (Design):** Understand requirements, design solution, make decisions
+  - **Развертывание (Deployment):** Implement design, deploy to environment
+  - **Тестирование (Testing):** Verify everything works, catch edge cases
+- **Output:** Formatted methodology guide with examples
 
 ---
 
