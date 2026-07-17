@@ -182,6 +182,7 @@ def configure_trello(
             "token": token,
             "current_scope": scope,
             "boards": {},
+            "known_scopes": [],
         }
 
     # Update API credentials (shared across all boards)
@@ -189,8 +190,11 @@ def configure_trello(
     config["token"] = token
     config["current_scope"] = scope
 
-    # Add/update this board under the scope
+    # Initialize structures
     config.setdefault("boards", {})
+    config.setdefault("known_scopes", [])
+
+    # Add/update this board under the scope
     config["boards"][scope] = {
         "board_id": board_id,
         "board_url": board_url,
@@ -198,6 +202,11 @@ def configure_trello(
         "tech_level": tech_level,
         "language": "auto",
     }
+
+    # Mark scope as known (configured)
+    if scope not in config["known_scopes"]:
+        config["known_scopes"].append(scope)
+        config["known_scopes"] = sorted(config["known_scopes"])
 
     config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
