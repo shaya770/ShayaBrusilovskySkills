@@ -2,7 +2,8 @@
   "enabled_paths": [
     "development.common",
     "development.trello",
-    "development.branching"
+    "development.branching",
+    "development.local_dev"
   ],
   "disabled_skills": []
 }
