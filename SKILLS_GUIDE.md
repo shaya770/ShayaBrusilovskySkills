@@ -56,40 +56,54 @@ configure_trello(
 
 **Run this first** to set up the board and configure tech level and scope.
 
-### 1b. Switch Scope
+### 1b. Switch Scope & Mark Known
 
 ```
-switch_scope()               # List all configured scopes
-switch_scope(scope="rental") # Switch to rental app's board
+switch_scope()                                      # List all known and configured
+switch_scope(scope="rental")                        # Switch to rental board
+switch_scope(mark_known="rental,crm,clinic")       # Mark applications as known
 ```
 
 **What it does:**
-- Lists all configured Trello scopes
-- Shows which scope is currently active (marked with "current")
-- Switches active scope (updates `current_scope` in config)
+- **List all:** Shows known (planned) and configured (active) scopes
+- **Switch:** Changes active scope (updates `current_scope` in config)
+- **Mark known:** Records planned applications even before configuring
 - All subsequent Trello skills use the active scope
 
-**Example:**
+**Example 1: Mark known applications**
 
-List all scopes:
+At project start, mark which apps you're building:
+```python
+switch_scope(mark_known="rental,crm,clinic")
+# Output:
+# ✓ Marked as known: rental, crm, clinic
+#
+# Known scopes (planned applications):
+#   clinic, crm, rental
+```
+
+**Example 2: List all scopes (known and configured)**
+
 ```python
 switch_scope()
 # Output:
-# Available Trello scopes:
-#   default
-#     Board: General Tasks
-#     Tech level: beginner
+# Configured Trello boards:
 #
-#   rental (current)
-#     Board: Rental App Tasks
-#     Tech level: non-technical
+#   ✓ rental ← current
+#       Board: Rental App Tasks
+#       Tech level: non-technical
 #
-#   crm
-#     Board: CRM Tasks
-#     Tech level: intermediate
+#   ✓ crm
+#       Board: CRM Tasks
+#       Tech level: intermediate
+#
+# Known scopes (not yet configured):
+#
+#   ○ clinic (run: configure_trello(..., scope='clinic', ...))
 ```
 
-Switch to CRM board:
+**Example 3: Switch to different board**
+
 ```python
 switch_scope(scope="crm")
 # Output:
@@ -100,7 +114,15 @@ switch_scope(scope="crm")
 # Language: auto
 ```
 
-**Use when:** Working on a different app/project in the same workspace.
+**Status symbols:**
+- `✓` = Configured (has Trello board)
+- `○` = Known (planned but not yet configured)
+- `← current` = Currently active scope
+
+**Use when:**
+- Starting new project: mark all planned applications at once
+- Adding new app: mark it as known, configure later
+- Working across multiple apps: use `switch_scope()` to see status
 
 ## Workflow Skills (Smart & High-Level)
 
@@ -319,46 +341,80 @@ Task: "Сделай login feature на английском" (Mixed)
 
 ## Multiple Scopes (Apps) in One Workspace
 
-You can manage multiple applications from one project:
+You can manage multiple applications from one project, with different Trello boards, tech levels, and languages per app.
 
 ```
 Workspace: my-startup/
-├── .claude/trello.json  (stores all 3 boards)
+├── .claude/trello.json
+│   known_scopes: [clinic, crm, rental]  ← all planned apps
+│   current_scope: rental                ← currently working on
+│   boards:
+│     rental:  configured (tech_level=0, language=ru)
+│     crm:     configured (tech_level=2, language=en)
+│     # clinic: marked as known but not configured
 ├── rental/              (Rental app code)
 ├── crm/                 (CRM app code)
-└── clinic/              (Clinic app code)
-
-Trello config:
-  current_scope: "rental"
-  boards:
-    rental:  tech_level=0, language=ru
-    crm:     tech_level=2, language=en
-    clinic:  tech_level=1, language=ru
+└── clinic/              (Clinic app code — planned)
 ```
 
-**Workflow:**
+**Startup workflow:**
 
-1. Working on rental app:
+1. **Mark known applications** (at project start):
    ```python
-   switch_scope(scope="rental")  # Use rental board
-   ask_questions(card_id, [...]) # No tech questions (tech_level=0)
+   switch_scope(mark_known="rental,crm,clinic")
+   # Registers all 3 apps, even though not all are configured yet
    ```
 
-2. Switch to CRM:
+2. **Configure rental board** (start building rental app):
    ```python
-   switch_scope(scope="crm")      # Use CRM board
-   ask_questions(card_id, [...]) # Tech questions allowed (tech_level=2)
+   configure_trello(
+       board_url="https://...",
+       api_key="...",
+       token="...",
+       scope="rental",
+       tech_level=0  # non-technical
+   )
    ```
 
-3. Check all scopes:
+3. **Configure CRM board** (start building CRM app):
    ```python
-   switch_scope()  # Lists all configured boards
+   configure_trello(
+       board_url="https://...",
+       api_key="...",
+       token="...",
+       scope="crm",
+       tech_level=2  # intermediate
+   )
    ```
 
-Each scope has its own:
+4. **Check progress** (see what's done):
+   ```python
+   switch_scope()
+   # Shows:
+   # ✓ rental (configured)
+   # ✓ crm (configured)
+   # ○ clinic (known, not configured)
+   ```
+
+5. **Switch between apps**:
+   ```python
+   switch_scope(scope="crm")       # Work on CRM
+   ask_questions(...)              # Tech questions allowed
+   
+   switch_scope(scope="rental")    # Work on Rental
+   ask_questions(...)              # No tech questions
+   ```
+
+6. **Configure clinic when ready**:
+   ```python
+   configure_trello(..., scope="clinic", tech_level=1)
+   # Now clinic is configured too
+   ```
+
+**Each scope has its own:**
 - Trello board (different board_id/board_url)
-- Tech level (e.g., rental=0, crm=2)
-- Detected language (e.g., rental=ru, crm=en)
+- Tech level (e.g., rental=0, crm=2, clinic=1)
+- Detected language (e.g., rental=ru, crm=en, clinic=ru)
 
 ## Card Lifecycle Example
 
@@ -395,13 +451,14 @@ The `.skills.json` file controls which skills are enabled:
 
 ### Trello Setup (.claude/trello.json)
 
-After running `configure_trello()`, your config stores multiple boards:
+After running `configure_trello()` and marking known scopes, your config looks like:
 
 ```json
 {
   "api_key": "your_key_here",
   "token": "your_token_here",
   "current_scope": "rental",
+  "known_scopes": ["clinic", "crm", "rental"],
   "boards": {
     "rental": {
       "board_id": "68f67984d4331f5a481236bf",
@@ -424,6 +481,9 @@ After running `configure_trello()`, your config stores multiple boards:
 **Top-level fields:**
 - `api_key` and `token`: Shared Trello credentials (used for all scopes)
 - `current_scope`: Which board is active (e.g., "rental")
+- `known_scopes`: List of all planned applications (configured + planned)
+  - Example: `["clinic", "crm", "rental"]`
+  - Includes both configured (`rental`, `crm`) and not-yet-configured (`clinic`)
 - `boards`: Object with one entry per configured scope
 
 **Per-scope fields:**
