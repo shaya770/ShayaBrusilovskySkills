@@ -164,6 +164,51 @@ When a stage is complete:
 
 ---
 
+## Step-by-Step Discussion Protocol
+
+**Within each stage, follow this workflow:**
+
+1. **Present ONE item/decision/plan** — don't overwhelm with everything at once
+2. **Discuss it thoroughly** — answer questions, explain reasoning, address concerns
+3. **Wait for approval** — "это меня полностью устраивает" (full satisfaction) or equivalent
+4. **Mark it done** — once approved, this item does NOT re-raise in future iterations
+5. **Move to next item** — proceed with the next point only after current is closed
+
+**Why this works:**
+- Each decision gets full attention and clarity
+- No surprises or misalignments later
+- Approved items stay approved (no backtracking)
+- Clear handoff: "done, move on" vs. "needs more work"
+
+**Example workflow:**
+
+```
+Claude: "Пункт 1: Используем PostgreSQL локально вместо SQLite"
+  ↓
+User: "Почему? Разница есть?"
+  ↓
+Claude: [explains pros/cons, local vs. prod consistency]
+  ↓
+User: "Ладно, это меня устраивает"
+  ↓
+✓ Decision locked. Never re-discuss unless explicitly re-opened.
+
+Claude: "Пункт 2: Пароли тестовых пользователей = их имена"
+  ↓
+User: [discussion/changes if needed]
+  ↓
+User: "Согласен, идем дальше"
+  ↓
+✓ Next item begins.
+```
+
+**Approved items are FINAL for that stage:**
+- Don't bring them up again during the same stage
+- Don't re-litigate them in the next stage
+- Only revisit if user explicitly asks ("давай вернёмся к...")
+
+---
+
 ## Common Mistakes to Avoid
 
 ❌ **Don't skip design.** "We'll design it as we code" = rework, bugs, wasted time.
