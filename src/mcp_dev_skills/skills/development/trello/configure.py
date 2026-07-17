@@ -32,6 +32,14 @@ SKILL = {
                 "type": "string",
                 "description": "Trello API Token (generated from https://trello.com/app-key)",
             },
+            "tech_level": {
+                "type": "integer",
+                "enum": [0, 1, 2, 3],
+                "description": (
+                    "User's technical level: 0=Non-technical (no tech questions), "
+                    "1=Beginner, 2=Intermediate, 3=Expert. Affects question filtering."
+                ),
+            },
         },
         "required": ["board_url", "api_key", "token"],
     },
@@ -118,12 +126,31 @@ def _validate_and_setup_board(
 
 
 def configure_trello(
-    workspace_root: Path, board_url: str, api_key: str, token: str
+    workspace_root: Path,
+    board_url: str,
+    api_key: str,
+    token: str,
+    tech_level: int = 1,
 ) -> str:
-    """Validate and configure Trello board."""
+    """Validate and configure Trello board.
+
+    Args:
+        workspace_root: Project root
+        board_url: Full Trello board URL
+        api_key: Trello API key
+        token: Trello API token
+        tech_level: User's technical level (0-3). Affects question filtering.
+                    0 = non-technical (skip tech questions)
+                    1 = beginner (simple tech questions)
+                    2 = intermediate (moderate tech questions)
+                    3 = expert (all questions)
+    """
     board_id = _extract_board_id(board_url)
     if not board_id:
         return "Error: Invalid board URL. Expected: https://trello.com/b/BOARD_ID/name"
+
+    if not 0 <= tech_level <= 3:
+        return "Error: tech_level must be 0-3"
 
     success, message, board_name = _validate_and_setup_board(board_id, api_key, token)
     if not success:
@@ -136,14 +163,17 @@ def configure_trello(
         "board_name": board_name,
         "api_key": api_key,
         "token": token,
+        "tech_level": tech_level,
+        "language": "auto",  # Auto-detect from task description
     }
 
     config_dir = workspace_root / ".claude"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "trello.json"
-    config_path.write_text(json.dumps(config, indent=2))
+    config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
-    return f"✓ Trello board configured and saved.\n\n{message}\n\nReady to use Trello skills."
+    level_names = {0: "Non-technical", 1: "Beginner", 2: "Intermediate", 3: "Expert"}
+    return f"✓ Trello configured.\n\n{message}\n\nTechnical level: {level_names.get(tech_level, '?')}\nReady to use Trello skills."
 
 
 def execute(workspace_root: Path, **kwargs) -> str:
@@ -151,6 +181,7 @@ def execute(workspace_root: Path, **kwargs) -> str:
     board_url = kwargs.get("board_url")
     api_key = kwargs.get("api_key")
     token = kwargs.get("token")
+    tech_level = kwargs.get("tech_level", 1)
 
     if not board_url or not api_key or not token:
         return (
@@ -158,7 +189,9 @@ def execute(workspace_root: Path, **kwargs) -> str:
             "Required:\n"
             "  - board_url: Full Trello board URL\n"
             "  - api_key: Trello API Key (from https://trello.com/app-key)\n"
-            "  - token: Trello API Token (from https://trello.com/app-key)"
+            "  - token: Trello API Token (from https://trello.com/app-key)\n"
+            "Optional:\n"
+            "  - tech_level: 0=non-technical, 1=beginner, 2=intermediate, 3=expert (default: 1)"
         )
 
-    return configure_trello(workspace_root, board_url, api_key, token)
+    return configure_trello(workspace_root, board_url, api_key, token, tech_level)

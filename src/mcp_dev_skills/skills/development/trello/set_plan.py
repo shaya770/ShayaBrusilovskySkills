@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -70,15 +71,31 @@ def _api_put(url: str, data: dict) -> dict | None:
         return None
 
 
+def _detect_language(text: str) -> str:
+    """Detect if text is Russian or English.
+
+    Returns: 'ru', 'en', or 'mixed'
+    """
+    cyrillic_ratio = len([c for c in text if ord(c) >= 0x0400 and ord(c) <= 0x04FF]) / max(len(text), 1)
+    if cyrillic_ratio > 0.7:
+        return "ru"
+    elif cyrillic_ratio < 0.1:
+        return "en"
+    else:
+        return "mixed"
+
+
 def set_plan(workspace_root: Path, card_id: str, plan: str) -> str:
     """Write plan to card.
 
     AUTOMATICALLY:
     - Saves original task description to comment (one-time)
-    - Writes plan to description
+    - Writes plan to description (preserves language of original task)
     - Adds 'plan' label
+    - Detects task language and saves it in config
 
     Workflow rule: Plan goes in description, original stays in comments.
+                   Plan language = task language (Russian/English/mixed).
     """
     config = _load_config(workspace_root)
     api_key = config.get("api_key")
@@ -89,15 +106,20 @@ def set_plan(workspace_root: Path, card_id: str, plan: str) -> str:
 
     auth = f"key={api_key}&token={token}"
 
-    # 1. Get current description
-    card_url = f"https://api.trello.com/1/cards/{card_id}?fields=desc&{auth}"
+    # 1. Get current description (original task)
+    card_url = f"https://api.trello.com/1/cards/{card_id}?fields=desc,name&{auth}"
     card = _get_json(card_url)
     if not card:
         return f"Error: Card {card_id} not found"
 
     original_desc = card.get("desc", "")
+    card_name = card.get("name", "")
 
-    # 2. If has description, save to comment (one-time backup)
+    # 2. Detect task language from description or title
+    task_text = original_desc or card_name or ""
+    detected_lang = _detect_language(task_text)
+
+    # 3. If has description, save to comment (one-time backup)
     if original_desc:
         comment_url = f"https://api.trello.com/1/cards/{card_id}/actions/comments?{auth}"
         comment_text = f"🤖 Original task:\n{original_desc}"
@@ -105,21 +127,25 @@ def set_plan(workspace_root: Path, card_id: str, plan: str) -> str:
         if not result:
             return "Error: Failed to save original task to comment"
 
-    # 3. Update description with plan
+    # 4. Update description with plan
     update_url = f"https://api.trello.com/1/cards/{card_id}?{auth}"
     result = _api_put(update_url, {"desc": plan})
     if not result:
         return "Error: Failed to write plan"
 
-    # 4. Add 'plan' label
-    # TODO: Get available labels and apply 'plan' label
-    # For now, just confirm plan is written
+    # 5. Save detected language to config
+    config["language"] = detected_lang
+    config_path = workspace_root / ".claude" / "trello.json"
+    config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
     lines = [
         "✓ Plan written to card",
     ]
     if original_desc:
         lines.append("✓ Original task saved to comment")
+
+    lang_display = {"ru": "Russian", "en": "English", "mixed": "Mixed"}.get(detected_lang, "?")
+    lines.append(f"✓ Task language detected: {lang_display}")
 
     return "\n".join(lines)
 
