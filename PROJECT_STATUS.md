@@ -99,10 +99,14 @@ Total: 18 skill files (+ utilities)
 ### GROUP: development.common
 
 #### **1. project_analyzer**
-- **Description:** Recursively scan workspace and return lightweight tree structure
-- **Use:** Understand project layout
-- **Input:** None (workspace auto-detected)
-- **Output:** JSON tree or formatted text
+- **Description:** Intelligent workspace analysis with language/framework support and project partitioning
+- **Use:** Understand project structure, select a part to work on, get exact file paths
+- **Architecture:** Modular system with base analyzer + specialized analyzers per language/framework
+- **Input:** None (workspace auto-detected), can specify part of interest
+- **Output:**
+  - Level 1: List of logical project parts
+  - Level 2: Details of selected part (files, functions, classes)
+  - Level 3: Exact paths to relevant files
 
 #### **2. file_operations**
 - **Description:** Safely read workspace files (path-sandboxed)
