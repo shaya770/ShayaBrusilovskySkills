@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .git_utils import list_branches, get_branch_info, get_current_branch
+from mcp_dev_skills.skills.development.branching.git_utils import list_branches, get_branch_info, get_current_branch
 
 SKILL = {
     "name": "list_agent_branches",
-    "group": "development.trello",
+    "group": "development.branching",
     "description": (
         "List all active agent branches. Shows branch status, commits, current branch."
     ),

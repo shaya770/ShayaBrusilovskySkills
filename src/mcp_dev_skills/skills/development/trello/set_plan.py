@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from .config_utils import get_board_config, get_api_credentials, load_config
+from mcp_dev_skills.skills.development.trello.config_utils import get_board_config, get_api_credentials, load_config
 
 SKILL = {
     "name": "set_plan",

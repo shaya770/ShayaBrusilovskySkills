@@ -8,12 +8,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from .config_utils import get_api_credentials, get_board_config
-from .git_utils import get_branch_info, list_branches, get_changed_files
+from mcp_dev_skills.skills.development.trello.config_utils import get_api_credentials, get_board_config
+from mcp_dev_skills.skills.development.branching.git_utils import get_branch_info, list_branches, get_changed_files
 
 SKILL = {
     "name": "update_branch_status",
-    "group": "development.trello",
+    "group": "development.branching",
     "description": (
         "Update Trello card with current git branch status. "
         "Reads git commits, files changed; updates card comment."
