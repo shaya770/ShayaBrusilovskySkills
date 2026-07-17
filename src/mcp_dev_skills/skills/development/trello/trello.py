@@ -1,10 +1,14 @@
-"""Skill: trello — all Trello operations in one tool, dispatched by action.
+"""Skill: trello — all board operations in one tool, dispatched by action.
 
-Replaces the former 12 separate skills. Workflow rules are enforced in code:
+Workflow rules are enforced in code:
 - Claude may move: Inbox→Planning, Approved→In Progress, In Progress→Review
 - Only the user moves: Planning→Approved, Review→Done
 - set_plan backs up the original task to a comment before overwriting
 - ask_questions filters technical questions by the user's tech_level
+
+All actions (except `configure`, which is backend-specific onboarding) talk to
+the BoardBackend abstraction — see backend.py. Swapping Trello for the own web
+interface later means adding a backend there, not touching this file.
 """
 
 from __future__ import annotations
@@ -13,19 +17,12 @@ import json
 import re
 from pathlib import Path
 
+from mcp_dev_skills.skills.development.trello.backend import BoardBackend, get_backend
 from mcp_dev_skills.skills.development.trello.config_utils import (
-    get_api_credentials,
-    get_board_config,
-    get_current_scope,
     get_tech_level,
     load_config,
 )
-from mcp_dev_skills.skills.development.trello.trello_api import (
-    TrelloAPIError,
-    get,
-    post,
-    put,
-)
+from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
 
 SKILL = {
     "name": "trello",
@@ -64,7 +61,7 @@ SKILL = {
             },
             "card_id": {
                 "type": "string",
-                "description": "Trello card ID (get_card, set_plan, ask_questions, change_status, add_comment, create_checklist)",
+                "description": "Card ID (get_card, set_plan, ask_questions, change_status, add_comment, create_checklist)",
             },
             "plan": {
                 "type": "string",
@@ -155,21 +152,6 @@ def _save_config(workspace_root: Path, config: dict) -> None:
     path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _require_credentials(workspace_root: Path) -> tuple[str, str] | str:
-    """Return (api_key, token) or an error string."""
-    credentials = get_api_credentials(workspace_root)
-    if not credentials:
-        return "Error: Trello not configured. Run trello(action='configure', ...) first."
-    return credentials
-
-
-def _require_board(workspace_root: Path) -> dict | str:
-    board = get_board_config(workspace_root)
-    if not board or not board.get("board_id"):
-        return "Error: No board configured for current scope. Run trello(action='configure', ...)."
-    return board
-
-
 def _find_list_id(lists: list[dict], name: str) -> str | None:
     for lst in lists:
         if lst.get("name") == name:
@@ -217,7 +199,7 @@ def _filter_questions_by_tech_level(questions: list[str], tech_level: int) -> li
 
 
 # ---------------------------------------------------------------------------
-# Actions
+# Backend-specific onboarding (Trello only)
 # ---------------------------------------------------------------------------
 
 def _action_configure(
@@ -228,6 +210,8 @@ def _action_configure(
     scope: str = "default",
     tech_level: int = 1,
 ) -> str:
+    from mcp_dev_skills.skills.development.trello.trello_api import get as api_get
+
     match = re.search(r"/b/([a-z0-9]+)", board_url, re.IGNORECASE)
     if not match:
         return "Error: Invalid board URL. Expected: https://trello.com/b/BOARD_ID/name"
@@ -238,25 +222,28 @@ def _action_configure(
     if not scope or not scope.replace("_", "").replace("-", "").isalnum():
         return "Error: scope must be alphanumeric (letters, numbers, dash, underscore)"
 
-    # Validate credentials and ensure columns exist
-    board_data = get(f"boards/{board_id}", api_key, token, {"fields": "name"})
+    # Validate credentials, then ensure columns exist via the backend interface
+    board_data = api_get(f"boards/{board_id}", api_key, token, {"fields": "name"})
     board_name = board_data.get("name", "Unknown")
 
-    lists = get(f"boards/{board_id}/lists", api_key, token, {"fields": "name", "filter": "open"})
-    existing = {lst["name"] for lst in lists}
+    from mcp_dev_skills.skills.development.trello.backend import TrelloBackend
+
+    backend = TrelloBackend(api_key, token, board_id, board_name)
+    existing = {lst["name"] for lst in backend.get_lists()}
 
     messages = [f"Board: {board_name}"]
     for col_name in REQUIRED_COLUMNS:
         if col_name in existing:
             messages.append(f"  ✓ {col_name}")
         else:
-            post(f"boards/{board_id}/lists", api_key, token, {"name": col_name})
+            backend.create_list(col_name)
             messages.append(f"  + {col_name} (created)")
 
     config = load_config(workspace_root)
     config["api_key"] = api_key
     config["token"] = token
     config["current_scope"] = scope
+    config.setdefault("backend", "trello")
     config.setdefault("boards", {})
     config.setdefault("known_scopes", [])
     config["boards"][scope] = {
@@ -350,25 +337,18 @@ def _action_switch_scope(
     )
 
 
-def _action_check_board(workspace_root: Path, api_key: str, token: str) -> str:
+# ---------------------------------------------------------------------------
+# Backend-agnostic actions
+# ---------------------------------------------------------------------------
+
+def _action_check_board(backend: BoardBackend) -> str:
     """One-shot check for actionable cards. No polling — the loop belongs to the client."""
-    board = _require_board(workspace_root)
-    if isinstance(board, str):
-        return board
-
-    lists = get(
-        f"boards/{board['board_id']}/lists", api_key, token,
-        {"fields": "name", "filter": "open"},
-    )
-
     work: list[str] = []
-    for lst in lists:
+    for lst in backend.get_lists():
         if lst["name"] not in ACTIONABLE_LISTS:
             continue
-        cards = get(f"lists/{lst['id']}/cards", api_key, token, {"fields": "name,labels"})
-        for card in cards:
-            labels = {label["name"] for label in card.get("labels", [])}
-            if "wait" not in labels:
+        for card in backend.get_cards(lst["id"]):
+            if "wait" not in card["labels"]:
                 work.append(f"  [{lst['name']}] {card['name']} (id: {card['id']})")
 
     if not work:
@@ -376,58 +356,48 @@ def _action_check_board(workspace_root: Path, api_key: str, token: str) -> str:
     return "🚨 WORK FOUND:\n" + "\n".join(work)
 
 
-def _action_get_card(workspace_root: Path, api_key: str, token: str, card_id: str) -> str:
-    card = get(f"cards/{card_id}", api_key, token, {"fields": "name,desc,labels,idList"})
+def _action_get_card(backend: BoardBackend, card_id: str) -> str:
+    card = backend.get_card(card_id)
 
-    lines = [f"📇 Card: {card.get('name', 'Untitled')}", ""]
+    lines = [f"📇 Card: {card['name'] or 'Untitled'}", ""]
 
-    desc = card.get("desc", "")
-    if desc:
-        lines.extend(["📝 Description:", desc, ""])
+    if card["desc"]:
+        lines.extend(["📝 Description:", card["desc"], ""])
 
-    labels = card.get("labels", [])
-    if labels:
-        lines.append(f"🏷️  Labels: {', '.join(label.get('name', '') for label in labels)}")
+    if card["labels"]:
+        lines.append(f"🏷️  Labels: {', '.join(card['labels'])}")
         lines.append("")
 
-    checklists = get(f"cards/{card_id}/checklists", api_key, token)
-    for checklist in checklists or []:
-        lines.append(f"✓ {checklist.get('name')} (id: {checklist.get('id')}):")
-        items = checklist.get("checkItems", [])
-        if items:
-            for item in items:
-                status = "☑️" if item.get("state") == "complete" else "☐"
-                lines.append(f"  {status} {item.get('name')}")
+    for checklist in backend.get_checklists(card_id):
+        lines.append(f"✓ {checklist['name']} (id: {checklist['id']}):")
+        if checklist["items"]:
+            for item in checklist["items"]:
+                status = "☑️" if item["complete"] else "☐"
+                lines.append(f"  {status} {item['name']}")
         else:
             lines.append("  (empty)")
         lines.append("")
 
-    comments = get(f"cards/{card_id}/actions", api_key, token, {"filter": "commentCard"})
+    comments = backend.get_comments(card_id)
     if comments:
         lines.append("💬 Comments:")
         for comment in comments:
-            author = comment.get("memberCreator", {}).get("fullName", "Unknown")
-            text = comment.get("data", {}).get("text", "")
-            lines.append(f"  {author}: {text}")
+            lines.append(f"  {comment['author']}: {comment['text']}")
 
     return "\n".join(lines)
 
 
-def _action_set_plan(workspace_root: Path, api_key: str, token: str, card_id: str, plan: str) -> str:
-    card = get(f"cards/{card_id}", api_key, token, {"fields": "desc,name"})
-    original_desc = card.get("desc", "")
-    card_name = card.get("name", "")
+def _action_set_plan(workspace_root: Path, backend: BoardBackend, card_id: str, plan: str) -> str:
+    card = backend.get_card(card_id)
+    original_desc = card["desc"]
 
-    detected_lang = _detect_language(original_desc or card_name or "")
+    detected_lang = _detect_language(original_desc or card["name"] or "")
 
     # One-time backup of the original task before overwriting
     if original_desc:
-        post(
-            f"cards/{card_id}/actions/comments", api_key, token,
-            {"text": f"🤖 Original task:\n{original_desc}"},
-        )
+        backend.add_comment(card_id, f"🤖 Original task:\n{original_desc}")
 
-    put(f"cards/{card_id}", api_key, token, {"desc": plan})
+    backend.set_description(card_id, plan)
 
     # Remember detected language in the scope config
     config = load_config(workspace_root)
@@ -445,12 +415,8 @@ def _action_set_plan(workspace_root: Path, api_key: str, token: str, card_id: st
 
 
 def _action_ask_questions(
-    workspace_root: Path, api_key: str, token: str, card_id: str, questions: list[str]
+    workspace_root: Path, backend: BoardBackend, card_id: str, questions: list[str]
 ) -> str:
-    board = _require_board(workspace_root)
-    if isinstance(board, str):
-        return board
-
     tech_level = get_tech_level(workspace_root)
     filtered = _filter_questions_by_tech_level(questions, tech_level)
     skipped = len(questions) - len(filtered)
@@ -461,21 +427,15 @@ def _action_ask_questions(
             f"(user tech level: {tech_level}). No Questions checklist created."
         )
 
-    questions_checklist = post(f"cards/{card_id}/checklists", api_key, token, {"name": "Questions"})
-    questions_id = questions_checklist.get("id")
-
+    questions_checklist = backend.create_checklist(card_id, "Questions")
     for question in filtered:
-        post(f"checklists/{questions_id}/checkItems", api_key, token, {"name": question})
+        backend.add_checklist_item(questions_checklist["id"], question)
 
-    post(f"cards/{card_id}/checklists", api_key, token, {"name": "Answers"})
+    backend.create_checklist(card_id, "Answers")
 
-    lists = get(
-        f"boards/{board['board_id']}/lists", api_key, token,
-        {"fields": "name", "filter": "open"},
-    )
-    planning_id = _find_list_id(lists, "Planning")
+    planning_id = _find_list_id(backend.get_lists(), "Planning")
     if planning_id:
-        put(f"cards/{card_id}", api_key, token, {"idList": planning_id})
+        backend.move_card(card_id, planning_id)
 
     lines = [f"✓ Created 'Questions' checklist with {len(filtered)} question(s)"]
     if skipped > 0:
@@ -492,33 +452,22 @@ def _action_ask_questions(
     return "\n".join(lines)
 
 
-def _action_change_status(
-    workspace_root: Path, api_key: str, token: str, card_id: str, new_status: str
-) -> str:
-    board = _require_board(workspace_root)
-    if isinstance(board, str):
-        return board
-
-    card = get(f"cards/{card_id}", api_key, token, {"fields": "idList"})
-    current_list_id = card.get("idList")
-
-    lists = get(
-        f"boards/{board['board_id']}/lists", api_key, token,
-        {"fields": "name", "filter": "open"},
-    )
+def _action_change_status(backend: BoardBackend, card_id: str, new_status: str) -> str:
+    card = backend.get_card(card_id)
+    lists = backend.get_lists()
 
     current_status = None
     target_list_id = None
     for lst in lists:
-        if lst.get("id") == current_list_id:
-            current_status = lst.get("name")
-        if lst.get("name") == new_status:
-            target_list_id = lst.get("id")
+        if lst["id"] == card["list_id"]:
+            current_status = lst["name"]
+        if lst["name"] == new_status:
+            target_list_id = lst["id"]
 
     if not current_status:
         return "Error: Could not determine card's current column"
     if not target_list_id:
-        available = ", ".join(lst.get("name", "?") for lst in lists)
+        available = ", ".join(lst["name"] for lst in lists)
         return f"Error: Column '{new_status}' not found. Available: {available}"
 
     allowed = CLAUDE_TRANSITIONS.get(current_status, [])
@@ -527,23 +476,8 @@ def _action_change_status(
             return f"⚠️ Cannot move to {new_status} (user decision). Currently in: {current_status}"
         return f"Invalid transition: {current_status}→{new_status}"
 
-    put(f"cards/{card_id}", api_key, token, {"idList": target_list_id})
+    backend.move_card(card_id, target_list_id)
     return f"✓ Card moved: {current_status} → {new_status}"
-
-
-def _action_add_comment(api_key: str, token: str, card_id: str, text: str) -> str:
-    post(f"cards/{card_id}/actions/comments", api_key, token, {"text": f"🤖 {text}"})
-    return "✓ Comment added"
-
-
-def _action_create_checklist(api_key: str, token: str, card_id: str, name: str) -> str:
-    checklist = post(f"cards/{card_id}/checklists", api_key, token, {"name": name})
-    return f"✓ Checklist '{name}' created (id: {checklist.get('id')})"
-
-
-def _action_add_checklist_item(api_key: str, token: str, checklist_id: str, text: str) -> str:
-    post(f"checklists/{checklist_id}/checkItems", api_key, token, {"name": text})
-    return "✓ Item added to checklist"
 
 
 # ---------------------------------------------------------------------------
@@ -556,8 +490,8 @@ def execute(workspace_root: Path, **kwargs) -> str:
     if not action:
         return "Error: action is required"
 
-    # configure and switch_scope work without existing credentials
     try:
+        # configure and switch_scope work without an existing backend
         if action == "configure":
             board_url = kwargs.get("board_url")
             api_key = kwargs.get("api_key")
@@ -574,59 +508,61 @@ def execute(workspace_root: Path, **kwargs) -> str:
                 workspace_root, kwargs.get("scope"), kwargs.get("mark_known")
             )
 
-        credentials = _require_credentials(workspace_root)
-        if isinstance(credentials, str):
-            return credentials
-        api_key, token = credentials
+        backend = get_backend(workspace_root)
+        if backend is None:
+            return "Error: Trello not configured. Run trello(action='configure', ...) first."
 
         if action == "check_board":
-            return _action_check_board(workspace_root, api_key, token)
+            return _action_check_board(backend)
 
         card_id = kwargs.get("card_id")
 
         if action == "get_card":
             if not card_id:
                 return "Error: get_card requires card_id"
-            return _action_get_card(workspace_root, api_key, token, card_id)
+            return _action_get_card(backend, card_id)
 
         if action == "set_plan":
             plan = kwargs.get("plan")
             if not card_id or not plan:
                 return "Error: set_plan requires card_id and plan"
-            return _action_set_plan(workspace_root, api_key, token, card_id, plan)
+            return _action_set_plan(workspace_root, backend, card_id, plan)
 
         if action == "ask_questions":
             questions = kwargs.get("questions")
             if not card_id or not questions:
                 return "Error: ask_questions requires card_id and questions"
-            return _action_ask_questions(workspace_root, api_key, token, card_id, questions)
+            return _action_ask_questions(workspace_root, backend, card_id, questions)
 
         if action == "change_status":
             new_status = kwargs.get("new_status")
             if not card_id or not new_status:
                 return "Error: change_status requires card_id and new_status"
-            return _action_change_status(workspace_root, api_key, token, card_id, new_status)
+            return _action_change_status(backend, card_id, new_status)
 
         if action == "add_comment":
             text = kwargs.get("text")
             if not card_id or not text:
                 return "Error: add_comment requires card_id and text"
-            return _action_add_comment(api_key, token, card_id, text)
+            backend.add_comment(card_id, f"🤖 {text}")
+            return "✓ Comment added"
 
         if action == "create_checklist":
             name = kwargs.get("name")
             if not card_id or not name:
                 return "Error: create_checklist requires card_id and name"
-            return _action_create_checklist(api_key, token, card_id, name)
+            checklist = backend.create_checklist(card_id, name)
+            return f"✓ Checklist '{name}' created (id: {checklist['id']})"
 
         if action == "add_checklist_item":
             checklist_id = kwargs.get("checklist_id")
             text = kwargs.get("text")
             if not checklist_id or not text:
                 return "Error: add_checklist_item requires checklist_id and text"
-            return _action_add_checklist_item(api_key, token, checklist_id, text)
+            backend.add_checklist_item(checklist_id, text)
+            return "✓ Item added to checklist"
 
         return f"Error: Unknown action '{action}'"
 
-    except TrelloAPIError as exc:
+    except BoardAPIError as exc:
         return f"Error: {exc}"

@@ -13,15 +13,13 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
+
 BASE_URL = "https://api.trello.com/1"
 
 
-class TrelloAPIError(Exception):
+class TrelloAPIError(BoardAPIError):
     """Trello API call failed. Carries HTTP status when available."""
-
-    def __init__(self, message: str, status: int | None = None):
-        super().__init__(message)
-        self.status = status
 
 
 def api_request(

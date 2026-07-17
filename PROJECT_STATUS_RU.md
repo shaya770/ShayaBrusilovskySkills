@@ -30,6 +30,7 @@ MCP-сервер (Model Context Protocol) с иерархической библ
 - [x] Deprecated-скиллы удалены (`move_card`, `update_card_description`) — валидацию воркфлоу больше нельзя обойти
 - [x] Новый скилл `workflow_state` — полный снимок контекста одной командой
 - [x] `.claude/trello.json` добавлен в `.gitignore` (credentials не попадут в git)
+- [x] **Абстракция BoardBackend** (`backend.py`) — весь workflow-код говорит с нейтральным интерфейсом доски (колонки/карточки/комментарии/чеклисты); Trello — просто первая реализация. Миграция на свой веб-интерфейс = написать `WebBackend`, зарегистрировать в `_BACKENDS`, поставить `"backend": "web"` в конфиге. Больше ничего не меняется.
 
 ---
 
@@ -51,8 +52,10 @@ ShayaBrusilovskySkills/
 │       │   ├── development_methodology.py
 │       │   └── workflow_state.py    # НОВЫЙ: снимок контекста
 │       ├── trello/
-│       │   ├── trello.py            # ЕДИНЫЙ Trello-скилл (10 действий)
-│       │   ├── trello_api.py        # Общий HTTP-клиент (без SKILL — модуль-помощник)
+│       │   ├── trello.py            # ЕДИНЫЙ скилл доски (10 действий, не привязан к Trello)
+│       │   ├── backend.py           # Интерфейс BoardBackend + TrelloBackend + get_backend()
+│       │   ├── errors.py            # Нейтральный BoardAPIError (скиллы ловят только его)
+│       │   ├── trello_api.py        # HTTP-клиент Trello (используется только TrelloBackend)
 │       │   ├── config_utils.py      # Scope-aware конфиг
 │       │   └── WORKFLOW.md
 │       ├── branching/

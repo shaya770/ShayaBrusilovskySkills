@@ -30,6 +30,7 @@ MCP (Model Context Protocol) server exposing a hierarchical library of **develop
 - [x] Deprecated skills removed (`move_card`, `update_card_description`) — workflow validation can no longer be bypassed
 - [x] New `workflow_state` skill — full context snapshot in one call
 - [x] `.claude/trello.json` added to `.gitignore` (credentials never committed)
+- [x] **BoardBackend abstraction** (`backend.py`) — all workflow code talks to a neutral board interface (lists/cards/comments/checklists); Trello is just the first implementation. Migration to the own web interface = implement `WebBackend`, register it in `_BACKENDS`, set `"backend": "web"` in config. Nothing else changes.
 
 ---
 
@@ -51,8 +52,10 @@ ShayaBrusilovskySkills/
 │       │   ├── development_methodology.py
 │       │   └── workflow_state.py    # NEW: context snapshot
 │       ├── trello/
-│       │   ├── trello.py            # THE Trello skill (10 actions)
-│       │   ├── trello_api.py        # Shared HTTP client (no SKILL — helper module)
+│       │   ├── trello.py            # THE board skill (10 actions, backend-agnostic)
+│       │   ├── backend.py           # BoardBackend interface + TrelloBackend + get_backend()
+│       │   ├── errors.py            # Neutral BoardAPIError (skills catch only this)
+│       │   ├── trello_api.py        # Trello HTTP client (used only by TrelloBackend)
 │       │   ├── config_utils.py      # Scope-aware config helpers
 │       │   └── WORKFLOW.md
 │       ├── branching/

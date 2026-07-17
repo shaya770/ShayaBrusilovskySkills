@@ -68,38 +68,29 @@ def _git_section(workspace_root: Path) -> list[str]:
 
 
 def _trello_section(workspace_root: Path) -> list[str]:
-    from mcp_dev_skills.skills.development.trello.config_utils import (
-        get_api_credentials,
-        get_board_config,
-        get_current_scope,
-    )
-    from mcp_dev_skills.skills.development.trello.trello_api import TrelloAPIError, get
+    from mcp_dev_skills.skills.development.trello.backend import get_backend
+    from mcp_dev_skills.skills.development.trello.config_utils import get_current_scope
+    from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
 
-    board = get_board_config(workspace_root)
-    credentials = get_api_credentials(workspace_root)
-    if not board or not credentials:
+    backend = get_backend(workspace_root)
+    if backend is None:
         return ["## Trello", "  Not configured (run trello action='configure')"]
 
-    api_key, token = credentials
     scope = get_current_scope(workspace_root)
     lines = [
         "## Trello",
         f"  Scope: {scope}",
-        f"  Board: {board.get('board_name', '?')}",
+        f"  Board: {backend.board_name}",
     ]
 
     try:
-        lists = get(
-            f"boards/{board['board_id']}/lists", api_key, token,
-            {"fields": "name", "filter": "open"},
-        )
-        by_name = {lst["name"]: lst["id"] for lst in lists}
+        by_name = {lst["name"]: lst["id"] for lst in backend.get_lists()}
         any_cards = False
         for list_name in SNAPSHOT_LISTS:
             list_id = by_name.get(list_name)
             if not list_id:
                 continue
-            cards = get(f"lists/{list_id}/cards", api_key, token, {"fields": "name"})
+            cards = backend.get_cards(list_id)
             if not cards:
                 continue
             any_cards = True
@@ -108,7 +99,7 @@ def _trello_section(workspace_root: Path) -> list[str]:
                 lines.append(f"    - {card['name']} (id: {card['id']})")
         if not any_cards:
             lines.append("  No cards in working columns")
-    except TrelloAPIError as exc:
+    except BoardAPIError as exc:
         lines.append(f"  ⚠️ Board unreachable: {exc}")
 
     return lines

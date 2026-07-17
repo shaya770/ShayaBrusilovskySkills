@@ -125,22 +125,11 @@ def _list_branches(workspace_root: Path) -> list[str]:
 # ============================================================================
 
 
-def _load_trello_config(workspace_root: Path) -> dict:
-    """Load Trello config."""
-    from mcp_dev_skills.skills.development.trello.config_utils import get_api_credentials, get_board_config
+def _get_backend(workspace_root: Path):
+    """Board backend for the current scope, or None if not configured."""
+    from mcp_dev_skills.skills.development.trello.backend import get_backend
 
-    credentials = get_api_credentials(workspace_root)
-    board = get_board_config(workspace_root)
-
-    if not credentials or not board:
-        return {}
-
-    api_key, token = credentials
-    return {
-        "api_key": api_key,
-        "token": token,
-        "board_id": board.get("board_id"),
-    }
+    return get_backend(workspace_root)
 
 
 # ============================================================================
@@ -156,37 +145,32 @@ def _action_assign(workspace_root: Path, card_id: str, branch_name: str, agent_i
     if not agent_id or not agent_id.replace("-", "").replace("_", "").isalnum():
         return "Error: Invalid agent ID. Use alphanumeric, dash, underscore."
 
-    config = _load_trello_config(workspace_root)
-    if not config:
+    backend = _get_backend(workspace_root)
+    if backend is None:
         return "Error: Trello not configured"
 
-    from mcp_dev_skills.skills.development.trello.trello_api import get, post, put
-
-    api_key, token, board_id = config["api_key"], config["token"], config["board_id"]
-
     # 1. Verify card exists
-    card = get(f"cards/{card_id}", api_key, token, {"fields": "name"})
-    card_name = card.get("name", "Unknown")
+    card = backend.get_card(card_id)
+    card_name = card["name"] or "Unknown"
 
     # 2. Create git branch
     success, git_msg = _create_branch(branch_name, workspace_root)
     if not success:
         return f"Error: {git_msg}"
 
-    # 3. Add comment to Trello
+    # 3. Add comment to the board
     comment_text = (
         f"🤖 Assigned to: {agent_id}\n"
         f"📌 Branch: {branch_name}\n"
         f"📊 Status: In Progress\n"
         f"📝 Commits: 0"
     )
-    post(f"cards/{card_id}/actions/comments", api_key, token, {"text": comment_text})
+    backend.add_comment(card_id, comment_text)
 
     # 4. Move card to "In Progress"
-    lists = get(f"boards/{board_id}/lists", api_key, token, {"fields": "name", "filter": "open"})
-    for lst in lists:
-        if lst.get("name") == "In Progress":
-            put(f"cards/{card_id}", api_key, token, {"idList": lst.get("id")})
+    for lst in backend.get_lists():
+        if lst["name"] == "In Progress":
+            backend.move_card(card_id, lst["id"])
             break
 
     return (
@@ -201,24 +185,18 @@ def _action_assign(workspace_root: Path, card_id: str, branch_name: str, agent_i
 
 def _action_update_status(workspace_root: Path, card_id: str, branch_name: str | None = None) -> str:
     """Update Trello card with current branch status."""
-    config = _load_trello_config(workspace_root)
-    if not config:
+    backend = _get_backend(workspace_root)
+    if backend is None:
         return "Error: Trello not configured"
 
-    from mcp_dev_skills.skills.development.trello.trello_api import get, post
-
-    api_key, token = config["api_key"], config["token"]
-
     # 1. Get card
-    card = get(f"cards/{card_id}", api_key, token, {"fields": "name"})
-    card_name = card.get("name", "Unknown")
+    card = backend.get_card(card_id)
+    card_name = card["name"] or "Unknown"
 
     # 2. Find branch name if not provided
     if not branch_name:
-        actions = get(f"cards/{card_id}/actions", api_key, token, {"filter": "commentCard"})
-        for action in actions or []:
-            comment = action.get("data", {}).get("text", "")
-            match = re.search(r"📌 Branch: (\S+)", comment)
+        for comment in backend.get_comments(card_id):
+            match = re.search(r"📌 Branch: (\S+)", comment["text"])
             if match:
                 branch_name = match.group(1)
                 break
@@ -242,7 +220,7 @@ def _action_update_status(workspace_root: Path, card_id: str, branch_name: str |
         f"📊 Status: In Progress ({commits_count} commits)\n\n"
         f"Recent commits:\n{commit_list}"
     )
-    post(f"cards/{card_id}/actions/comments", api_key, token, {"text": comment_text})
+    backend.add_comment(card_id, comment_text)
 
     return (
         f"✓ Branch status updated\n"
@@ -282,7 +260,7 @@ def _action_list(workspace_root: Path, filter_prefix: str | None = None) -> str:
 
 def execute(workspace_root: Path, **kwargs) -> str:
     """Execute the skill."""
-    from mcp_dev_skills.skills.development.trello.trello_api import TrelloAPIError
+    from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
 
     action = kwargs.get("action")
 
@@ -291,7 +269,7 @@ def execute(workspace_root: Path, **kwargs) -> str:
 
     try:
         return _dispatch(workspace_root, action, kwargs)
-    except TrelloAPIError as exc:
+    except BoardAPIError as exc:
         return f"Error: {exc}"
 
 

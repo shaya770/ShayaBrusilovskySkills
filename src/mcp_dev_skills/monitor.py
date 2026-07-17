@@ -25,12 +25,9 @@ import sys
 import time
 from pathlib import Path
 
-from mcp_dev_skills.skills.development.trello.config_utils import (
-    get_api_credentials,
-    get_board_config,
-    get_current_scope,
-)
-from mcp_dev_skills.skills.development.trello.trello_api import TrelloAPIError, get
+from mcp_dev_skills.skills.development.trello.backend import get_backend
+from mcp_dev_skills.skills.development.trello.config_utils import get_current_scope
+from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
 
 ACTIONABLE_LISTS = {"Approved", "Inbox"}
 MAX_CONSECUTIVE_FAILURES = 10
@@ -38,25 +35,16 @@ MAX_CONSECUTIVE_FAILURES = 10
 
 def check_once(workspace_root: Path) -> list[dict]:
     """One board pass. Returns actionable cards (no 'wait' label)."""
-    board = get_board_config(workspace_root)
-    credentials = get_api_credentials(workspace_root)
-    if not board or not credentials:
-        raise TrelloAPIError("Trello not configured (run trello action='configure' first)")
-
-    api_key, token = credentials
-    lists = get(
-        f"boards/{board['board_id']}/lists", api_key, token,
-        {"fields": "name", "filter": "open"},
-    )
+    backend = get_backend(workspace_root)
+    if backend is None:
+        raise BoardAPIError("Trello not configured (run trello action='configure' first)")
 
     work: list[dict] = []
-    for lst in lists:
+    for lst in backend.get_lists():
         if lst["name"] not in ACTIONABLE_LISTS:
             continue
-        cards = get(f"lists/{lst['id']}/cards", api_key, token, {"fields": "name,labels"})
-        for card in cards:
-            labels = {label["name"] for label in card.get("labels", [])}
-            if "wait" not in labels:
+        for card in backend.get_cards(lst["id"]):
+            if "wait" not in card["labels"]:
                 work.append({"column": lst["name"], "name": card["name"], "id": card["id"]})
     return work
 
@@ -67,7 +55,7 @@ def run(workspace_root: Path, interval: int) -> int:
         try:
             work = check_once(workspace_root)
             failures = 0
-        except TrelloAPIError as exc:
+        except BoardAPIError as exc:
             if "not configured" in str(exc):
                 print(f"Monitor error: {exc}")
                 return 1

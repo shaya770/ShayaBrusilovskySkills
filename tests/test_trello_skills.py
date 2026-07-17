@@ -94,10 +94,32 @@ def test_workflow_rules_enforced():
     print("OK: workflow transitions locked down")
 
 
+def test_backend_interface_complete():
+    """TrelloBackend implements every BoardBackend method (ABC enforces on instantiation)."""
+    from mcp_dev_skills.skills.development.trello.backend import (
+        _BACKENDS,
+        BoardBackend,
+        TrelloBackend,
+    )
+    from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
+    from mcp_dev_skills.skills.development.trello.trello_api import TrelloAPIError
+
+    backend = TrelloBackend("key", "token", "board123", "Test Board")
+    assert isinstance(backend, BoardBackend)
+    assert backend.board_id == "board123"
+    assert _BACKENDS.get("trello") is TrelloBackend
+
+    # Skills catch the neutral error; Trello's error must be a subclass
+    assert issubclass(TrelloAPIError, BoardAPIError)
+
+    print("OK: TrelloBackend implements the full BoardBackend interface")
+
+
 if __name__ == "__main__":
     test_trello_skill_loads()
     test_trello_actions_in_schema()
     test_workflow_state_loads()
     test_skill_structure()
     test_workflow_rules_enforced()
+    test_backend_interface_complete()
     print("\nAll tests passed!")

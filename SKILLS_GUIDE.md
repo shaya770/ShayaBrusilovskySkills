@@ -230,6 +230,12 @@ on the **current** scope; switch with `trello(action="switch_scope", scope="..."
 `api_key`/`token` are shared across scopes; everything else is per-board.
 **Never commit this file** — it is in `.gitignore`.
 
+Optional top-level field `"backend"` selects the board implementation
+(default `"trello"`). The workflow code talks to a neutral `BoardBackend`
+interface (`backend.py`) — when the own web interface replaces Trello,
+a `WebBackend` gets registered there and this field switches to it;
+skills, monitor, and branching stay untouched.
+
 ## Troubleshooting
 
 Errors now carry the real HTTP status from Trello:
