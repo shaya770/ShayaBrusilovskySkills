@@ -47,8 +47,7 @@ Each `.py` file is a skill module with:
 
 | Skill | Purpose |
 | --- | --- |
-| `configure_trello` | **Interactive setup:** Enter board URL, API key, token; validates & saves to `.claude/trello.json` |
-| `check_trello_board` | Quick probe of Trello board for actionable work (uses `.claude/trello.json` config) |
+| `trello` | **All Trello operations in one tool** (dispatched by `action`): configure, switch_scope, check_board, get_card, set_plan, ask_questions, change_status, add_comment, create_checklist, add_checklist_item. Workflow rules enforced in code. Config in `.claude/trello.json` (gitignored). |
 
 ## Quick Start
 
@@ -177,19 +176,16 @@ Enable `development.trello` in `.skills.json`:
    - Copy **API Key**
    - Generate **Token** (authorize app)
 
-2. **Configure via `configure_trello` skill:**
-   - Pass:
-     - Board URL (e.g., `https://trello.com/b/68f67984d4331f5a481236bf/myboard`)
-     - API Key
-     - Token
+2. **Configure via the `trello` skill:**
+   - `trello(action="configure", board_url=..., api_key=..., token=..., scope=..., tech_level=...)`
    - Skill will:
      - ✓ Validate credentials
      - ✓ Check board exists
      - ✓ Create missing columns: Inbox, Planning, Approved, In Progress, Review, Done
-     - ✓ Save config to `.claude/trello.json`
+     - ✓ Save config to `.claude/trello.json` (gitignored — never committed)
 
 3. **Use board:**
-   - `check_trello_board` — reads config, checks for actionable work
+   - `trello(action="check_board")` — one-shot check for actionable work
 
 See [WORKFLOW.md](src/mcp_dev_skills/skills/development/trello/WORKFLOW.md) for full Trello task protocol.
 

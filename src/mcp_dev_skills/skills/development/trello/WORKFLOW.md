@@ -9,16 +9,9 @@ Tasks are set and discussed in **Trello**. Claude reads and writes via REST API.
 
 ## Credentials & Board
 
-- **Keys:** `TRELLO_API_KEY`, `TRELLO_TOKEN` in **`.claude/trello.env`** (in `.gitignore`, never commit).
+- **Keys:** `api_key` and `token` live in **`.claude/trello.json`** (in `.gitignore`, never commit). Written by `trello(action="configure", ...)`.
 - **API base:** `https://api.trello.com/1/`
-- Each project has its own board ID.
-
-### Example `.claude/trello.env`
-
-```
-TRELLO_API_KEY=your_key_here
-TRELLO_TOKEN=your_token_here
-```
+- Each scope (app) has its own board; the active one is `current_scope`.
 
 ## Board Columns (example)
 
@@ -89,29 +82,23 @@ When in `Approved`:
 
 ## Skills Mapping to Workflow
 
-**Smart Skills** (embed workflow rules):
-- `set_plan(card_id, plan)` — Write plan, auto-save original to comment
-- `ask_questions(card_id, questions_list)` — Create Questions/Answers checklists, move to Planning
-- `change_status(card_id, new_status)` — Validate workflow rules, move card
+Everything goes through the single `trello` skill, dispatched by `action`:
 
-**Basic Skills** (atomic operations):
-
-| Workflow Step | Skill | Usage |
+| Workflow Step | Call | Notes |
 |---|---|---|
-| Take task | `monitor_trello_board()` | Find WORK on board |
-| | `get_card(card_id)` | Read full card details |
-| Write plan | `set_plan(card_id, plan)` | Auto-save original, write plan |
-| Ask questions | `ask_questions(card_id, questions)` | Auto-create checklists, move to Planning |
-| Work | `change_status(card_id, "In Progress")` | Move to In Progress (validated) |
-| | `add_comment(card_id, "text")` | Add progress comments |
-| Submit | `add_comment(card_id, "report")` | Add final report |
-| | `change_status(card_id, "Review")` | Move to Review (validated) |
-| Repeat | `monitor_trello_board()` | Check board again |
+| Take task | `trello(action="check_board")` | One-shot check of Inbox/Approved |
+| Monitor | `python -m mcp_dev_skills.monitor --workspace <path>` | Background process: silent while idle (zero tokens), prints + exits when work appears → wakes Claude |
+| | `trello(action="get_card", card_id=...)` | Read full card details |
+| Write plan | `trello(action="set_plan", card_id=..., plan=...)` | Auto-saves original to comment first |
+| Ask questions | `trello(action="ask_questions", card_id=..., questions=[...])` | Creates checklists, moves to Planning, tech-level filter |
+| Work | `trello(action="change_status", card_id=..., new_status="In Progress")` | Validated transition |
+| | `trello(action="add_comment", card_id=..., text=...)` | Progress comments (🤖 prefix) |
+| Submit | `trello(action="add_comment", card_id=..., text="report")` | Final report |
+| | `trello(action="change_status", card_id=..., new_status="Review")` | Validated transition |
+| Repeat | `trello(action="check_board")` | Check board again |
 
-**Legacy Skills** (kept for compatibility, better to use smart skills):
-- `update_card_description(card_id, plan)` — Deprecated, use `set_plan`
-- `create_checklist(card_id, name)` — Use with `add_checklist_item`
-- `move_card(card_id, list_name)` — Deprecated, use `change_status`
+Extra checklists when needed: `create_checklist` + `add_checklist_item` actions.
+There are no unvalidated move/update actions — the workflow rules cannot be bypassed.
 
 ## Key API Endpoints
 

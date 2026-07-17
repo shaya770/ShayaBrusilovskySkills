@@ -8,7 +8,7 @@ Skills are organized in a tree under src/mcp_dev_skills/skills/, e.g.:
     │   │   ├── project_analyzer.py
     │   │   └── file_operations.py
     │   ├── trello/
-    │   │   ├── configure_trello.py
+    │   │   ├── trello.py
     │   │   └── ...
     │   └── ...
     └── deployment/
@@ -60,7 +60,8 @@ def _walk_skills(base_path: Path, path_parts: list[str], depth: int = 0) -> list
         return modules
 
     if depth >= len(path_parts):
-        # We've matched all parts; now collect all .py modules in this dir
+        # We've matched all parts; collect all .py modules in this dir and below,
+        # so a path prefix (or "*") enables the whole subtree
         for item in sorted(base_path.iterdir()):
             if item.is_file() and item.suffix == ".py" and item.name != "__init__.py":
                 try:
@@ -69,6 +70,8 @@ def _walk_skills(base_path: Path, path_parts: list[str], depth: int = 0) -> list
                         modules.append(mod)
                 except Exception as e:
                     print(f"Warning: failed to load {item}: {e}", file=sys.stderr)
+            elif item.is_dir() and not item.name.startswith("_"):
+                modules.extend(_walk_skills(item, path_parts, depth))
         return modules
 
     part = path_parts[depth]

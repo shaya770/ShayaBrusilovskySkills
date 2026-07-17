@@ -1,769 +1,241 @@
 # Trello Skills Guide
 
-This document describes all Trello integration skills and how to use them.
+All Trello operations live in **one skill: `trello`**, dispatched by the `action` parameter.
+Workflow rules are enforced in code — there is no low-level bypass path.
 
 ## Quick Start
 
-### 1. Configure Trello
+### 1. Configure a board
 
-```
-configure_trello(board_url, api_key, token, scope="default", tech_level=1)
+```python
+trello(action="configure",
+       board_url="https://trello.com/b/BOARD_ID/name",
+       api_key="...", token="...",
+       scope="rental", tech_level=0)
 ```
 
 **Parameters:**
 - `board_url`: Full Trello board URL
-- `api_key`: Your Trello API key (from https://trello.com/app-key)
-- `token`: Your Trello API token
-- `scope`: Application/project scope (optional, default="default")
-  - Examples: `"rental"`, `"crm"`, `"clinic"`, `"tasker"`
-  - Allows multiple boards in one project
-- `tech_level`: User's technical level (optional, default=1)
-  - `0` = Non-technical (skip all technical questions)
-  - `1` = Beginner
-  - `2` = Intermediate
-  - `3` = Expert
+- `api_key` / `token`: From https://trello.com/app-key
+- `scope`: Application/project scope (optional, default `"default"`). Examples: `"rental"`, `"crm"`, `"clinic"`. Allows multiple boards in one workspace.
+- `tech_level`: 0=non-technical, 1=beginner, 2=intermediate, 3=expert (optional, default 1). Affects question filtering.
 
 **What it does:**
-- Validates Trello API credentials
-- Fetches board details
+- Validates credentials, fetches board details
 - Auto-creates missing columns: Inbox, Planning, Approved, In Progress, Review, Done
-- Saves config to `.claude/trello.json` with scope, tech_level, and detected language
-- Each scope can have different tech_level settings
+- Saves config to `.claude/trello.json` (gitignored — credentials never reach git)
 
-**Examples:**
-
-Set up board for rental app (non-technical user):
-```python
-configure_trello(
-    "https://trello.com/b/68f67984d4331f5a481236bf/rental-tasks",
-    "your_api_key",
-    "your_token",
-    scope="rental",
-    tech_level=0
-)
-```
-
-Set up board for CRM (intermediate user):
-```python
-configure_trello(
-    "https://trello.com/b/48e67984d4331f5a481236bf/crm-tasks",
-    "your_api_key",
-    "your_token",
-    scope="crm",
-    tech_level=2
-)
-```
-
-**Run this first** to set up the board and configure tech level and scope.
-
-### 1b. Switch Scope & Mark Known
-
-```
-switch_scope()                                      # List all known and configured
-switch_scope(scope="rental")                        # Switch to rental board
-switch_scope(mark_known="rental,crm,clinic")       # Mark applications as known
-```
-
-**What it does:**
-- **List all:** Shows known (planned) and configured (active) scopes
-- **Switch:** Changes active scope (updates `current_scope` in config)
-- **Mark known:** Records planned applications even before configuring
-- All subsequent Trello skills use the active scope
-
-**Example 1: Mark known applications**
-
-At project start, mark which apps you're building:
-```python
-switch_scope(mark_known="rental,crm,clinic")
-# Output:
-# ✓ Marked as known: rental, crm, clinic
-#
-# Known scopes (planned applications):
-#   clinic, crm, rental
-```
-
-**Example 2: List all scopes (known and configured)**
+### 2. Switch scope / register planned apps
 
 ```python
-switch_scope()
-# Output:
-# Configured Trello boards:
-#
-#   ✓ rental ← current
-#       Board: Rental App Tasks
-#       Tech level: non-technical
-#
-#   ✓ crm
-#       Board: CRM Tasks
-#       Tech level: intermediate
-#
-# Known scopes (not yet configured):
-#
-#   ○ clinic (run: configure_trello(..., scope='clinic', ...))
+trello(action="switch_scope")                              # list all scopes
+trello(action="switch_scope", scope="crm")                 # switch active board
+trello(action="switch_scope", mark_known="rental,crm")     # register planned apps
 ```
 
-**Example 3: Switch to different board**
+Status symbols: `✓` configured, `○` known/planned, `← current` active.
+
+### 3. Check for work
+
+**One-shot check** (on demand):
 
 ```python
-switch_scope(scope="crm")
-# Output:
-# ✓ Switched to scope: 'crm'
-#
-# Board: CRM Tasks
-# Tech level: intermediate
-# Language: auto
+trello(action="check_board")
+# → "🚨 WORK FOUND: [Approved] Fix login (id: ...)"  or  "No work found in Inbox/Approved."
 ```
 
-**Status symbols:**
-- `✓` = Configured (has Trello board)
-- `○` = Known (planned but not yet configured)
-- `← current` = Currently active scope
+Returns instantly — no polling inside the tool. Cards labeled `wait` are skipped.
 
-**Use when:**
-- Starting new project: mark all planned applications at once
-- Adding new app: mark it as known, configure later
-- Working across multiple apps: use `switch_scope()` to see status
+**Continuous monitoring** (zero tokens while idle) — launch the monitor script
+as a **background process** (Claude: run it via your shell in background mode):
 
-## Workflow Skills (Smart & High-Level)
-
-These skills embed workflow rules — use these instead of low-level operations.
-
-### set_plan — Write Plan with Auto-Backup
-
-```
-set_plan(card_id, plan)
+```bash
+python -m mcp_dev_skills.monitor --workspace <path> --interval 30
 ```
 
-**Automatically:**
-1. Detects task language (Russian/English/mixed)
-2. Saves original task description to comment (one-time only)
-3. Writes plan to card description (on same language as task)
-4. Tags card with 'plan' label
-5. Stores detected language in config
+How it works: the script polls Trello silently and prints **nothing** while there
+is no work — so the background runner stays quiet and Claude is never woken up
+(no tokens burned on idle checks). The moment actionable cards appear, it prints
+them and **exits** — that output wakes Claude, who reads the card list and starts
+working. After finishing, relaunch the monitor. Never run this loop inside an MCP
+tool call — it would block the server and hit the client timeout.
 
-**Why this matters:** 
-- Original task is preserved in comments so you can always refer back to it
-- Plan language matches task language automatically (no manual translation needed)
-- For Russian tasks → plan in Russian; for English tasks → plan in English
+## Workflow Actions (rules built in)
 
-**Example:**
+### set_plan — write plan with auto-backup
+
 ```python
-# Task was: "Реализовать авторизацию через OAuth"
-# You write plan in Russian:
-set_plan(card_id, "Шаг 1: настроить OAuth провайдер...")
-# → Language auto-detected as 'ru', stored in config
+trello(action="set_plan", card_id="...", plan="Шаг 1: ...")
 ```
 
-### ask_questions — Create Q&A Checklists
+Automatically: detects task language (ru/en/mixed), saves original description to a
+comment (one-time backup), writes the plan to the description, stores the language in
+the scope config. Write the plan in the task's language.
 
-```
-ask_questions(card_id, questions)
-```
+### ask_questions — Q&A checklists with tech-level filter
 
-**Automatically:**
-1. Loads user's tech_level from config
-2. Filters questions based on tech_level
-3. Creates 'Questions' checklist with filtered questions
-4. Creates empty 'Answers' checklist (user fills in)
-5. Moves card to Planning
-
-**Tech-Level Filtering:**
-- **tech_level=0** (non-technical): Skips all technical questions
-  - Keeps: "When?", "Why?", "Budget?", "Deadline?"
-  - Removes: "What language?", "Database?", "Performance?"
-- **tech_level=1-3**: All questions included
-
-**Usage:**
 ```python
-# User is non-technical (tech_level=0)
-ask_questions(card_id, [
-    "1) What is the goal?",           # ← kept
-    "2) Deadline?",                    # ← kept
-    "3) What programming language?",   # ← SKIPPED (technical)
-    "4) Database requirements?"        # ← SKIPPED (technical)
-])
-# Output: "Created 'Questions' checklist with 2 question(s)
-#          (skipped 2 technical questions — user level: non-technical)"
+trello(action="ask_questions", card_id="...",
+       questions=["1) What is the goal?", "2) Deadline?", "3) What database?"])
 ```
 
-**Matching:** Questions and answers are matched by number (e.g., "1) ..." → "1) ...").
+Automatically: loads `tech_level` from the current scope, filters out technical
+questions for `tech_level=0`, creates a "Questions" checklist and an empty "Answers"
+checklist, moves the card to Planning. Questions and answers are matched by number.
 
-### change_status — Move Card with Validation
+### change_status — move card with validation
 
-```
-change_status(card_id, new_status)
-```
-
-**Validates workflow rules:**
-- ✓ Claude can: Inbox→Planning, Approved→In Progress, In Progress→Review
-- ✓ User can: Planning→Approved, Review→Done
-
-**Prevents accidental moves:**
-- Cannot move to Approved (user decision)
-- Cannot move to Done (user decision)
-- Returns clear error if transition invalid
-
-**Usage:**
 ```python
-# Start work
-change_status(card_id, "In Progress")  # OK: Approved→In Progress
-
-# Finish work
-change_status(card_id, "Review")  # OK: In Progress→Review
-
-# This will fail (user decision):
-# change_status(card_id, "Approved")  # Error: user must approve
+trello(action="change_status", card_id="...", new_status="In Progress")
 ```
 
-## Agent-Based Workflow (Branch-Per-Card)
+| Transition | Allowed for |
+|---|---|
+| Inbox → Planning | Claude |
+| Planning → Approved | **User only** |
+| Approved → In Progress | Claude |
+| In Progress → Review | Claude |
+| Review → Done | **User only** |
 
-Each agent works on isolated git branch tied to Trello card.
+Attempts to move to Approved/Done return a clear error — approval is always a human decision.
 
-### assign_branch — Take Card & Create Branch
+## Read & Write Actions
 
-```
-assign_branch(card_id, branch_name="auth-oauth", agent_id="agent-1")
-```
-
-**Automatically:**
-1. Creates git branch from main
-2. Adds Trello comment with branch info
-3. Moves card to "In Progress"
-
-**Example:**
 ```python
-assign_branch(
-    card_id="5f8d9a2b1c3e4f5a",
-    branch_name="crm-auth-oauth",
-    agent_id="claude"
-)
-# Output:
-# ✓ Card assigned to branch
-# Card: Implement OAuth
-# Branch: crm-auth-oauth
-# Agent: claude
-# Status: In Progress
-#
-# Next steps:
-#   1. git checkout crm-auth-oauth
-#   2. Make changes and commit
-#   3. Update progress: update_branch_status(...)
+trello(action="get_card", card_id="...")                     # full details: desc, labels, checklists (with ids), comments
+trello(action="add_comment", card_id="...", text="...")      # 🤖 prefix added automatically
+trello(action="create_checklist", card_id="...", name="Review points")
+trello(action="add_checklist_item", checklist_id="...", text="...")
 ```
 
-### update_branch_status — Sync Git Status to Trello
+## workflow_state — restore context in one call
 
-```
-update_branch_status(card_id, branch_name="auth-oauth")
-```
-
-**Automatically:**
-1. Reads git commits on branch
-2. Gets changed files list
-3. Updates Trello comment with details
-
-**Example:**
 ```python
-# After working on branch
-git commit -m "add OAuth handler"
-git commit -m "add tests"
-
-# Sync to Trello
-update_branch_status(card_id="5f8d9a2b1c3e4f5a")
-# Output:
-# ✓ Branch status updated
-# Card: Implement OAuth
-# Branch: crm-auth-oauth
-# Commits: 5
-# Files changed: 3
-#
-# Changed files:
-#   • auth/oauth.py
-#   • auth/config.py
-#   • tests/test_oauth.py
+workflow_state()
 ```
 
-### list_agent_branches — See All Active Work
+Returns a single snapshot: current scope and board, cards in
+Inbox/Planning/Approved/In Progress/Review (with ids), git branch, uncommitted file
+count, and recent commits. Use it at the start of every session instead of poking
+around with several calls.
 
-```
-list_agent_branches()              # All branches
-list_agent_branches(filter="crm-") # Only crm-* branches
-```
+## Branch-Per-Card Workflow (branching_simple)
 
-**Shows:**
-- All branches (except main/master)
-- Commit count per branch
-- Which branch is currently checked out
-- Last commit message
-
-**Example:**
 ```python
-list_agent_branches(filter="crm-")
-# Output:
-# Active Agent Branches
-# Filter: crm-*
-#
-#   crm-auth-oauth ← current
-#     Commits: 5
-#     Last: add OAuth handler
-#
-#   crm-cache-redis
-#     Commits: 3
-#     Last: implement Redis cache
-#
-# Total: 2 branch(es)
+branching_simple(action="assign", card_id="...", branch_name="crm-auth-oauth", agent_id="claude")
+# → git branch created from main, Trello comment added, card → In Progress
+
+branching_simple(action="update_status", card_id="...")
+# → reads commits on the branch, posts progress comment to Trello
+# (branch name auto-detected from the earlier assign comment)
+
+branching_simple(action="list", filter="crm-")
+# → active branches with commit counts
 ```
 
-### create_pr_from_card — Create PR & Move to Review
+## Card Lifecycle
 
 ```
-create_pr_from_card(card_id)
+1. User adds task to Inbox
+2. Claude: trello(action="set_plan", ...)          → plan in description, original backed up
+3. Claude: trello(action="ask_questions", ...)     → card → Planning, Q&A checklists
+4. User: answers questions, moves card to Approved
+5. Claude: trello(action="change_status", new_status="In Progress")
+6. Claude: ... does the work ... (optionally branching_simple assign/update_status)
+7. Claude: trello(action="add_comment", text="Готово. Проверь результат.")
+8. Claude: trello(action="change_status", new_status="Review")
+9. User: reviews, moves card to Done
 ```
-
-**Automatically:**
-1. Pushes branch to origin
-2. Creates GitHub PR with:
-   - Title from card name
-   - Description with changed files
-   - Checklist for review
-3. Updates Trello with PR link
-4. Moves card to "Review"
-
-**Example:**
-```python
-# After finishing work
-create_pr_from_card(card_id="5f8d9a2b1c3e4f5a")
-# Output:
-# ✓ PR created successfully
-#
-# Card: Implement OAuth
-# Branch: crm-auth-oauth
-# PR: https://github.com/.../pull/42
-# Status: Moved to Review
-```
-
-## Agent Workflow Cycle
-
-```
-1. Take approved card from Trello
-   ↓
-2. assign_branch(card_id, "crm-auth-oauth", "claude")
-   ✓ Branch created, card → In Progress
-   ↓
-3. git checkout crm-auth-oauth
-   ↓
-4. Work: write code, commit, push
-   git commit -m "add OAuth"
-   git commit -m "add tests"
-   ↓
-5. Sync progress (optional)
-   update_branch_status(card_id)
-   ✓ Trello updated with commits
-   ↓
-6. When done
-   create_pr_from_card(card_id)
-   ✓ PR created, card → Review
-   ↓
-7. Wait for review
-   ↓
-8. User merges PR
-   ↓
-9. Card → Done
-```
-
-## Parallel Agent Example
-
-Three agents, three branches:
-
-```
-Agent 1 (Claude):
-  Card: "Implement OAuth"
-  Branch: crm-auth-oauth
-  Status: In Progress (5 commits)
-
-Agent 2 (Shaya):
-  Card: "Add caching layer"
-  Branch: crm-cache-redis
-  Status: In Progress (3 commits)
-
-Agent 3 (Bot):
-  Card: "API documentation"
-  Branch: crm-docs-api
-  Status: Waiting (blocked by agents 1 & 2)
-  
-When agents 1 & 2 create PRs:
-  → Agent 3 can start (auth + cache available)
-```
-
-## Atomic Skills (Low-Level Operations)
-
-Use only when smart skills don't fit. Prefer smart skills.
-
-### monitor_trello_board — Watch for Work
-
-```
-monitor_trello_board()
-```
-
-**Behavior:**
-- Polls board every 3 seconds silently
-- Prints nothing when NO work found
-- When work found, outputs:
-  ```
-  WORK found:
-    [Approved] Card 1: Task name
-    [Inbox] Card 2: Another task
-  After completing work, run the skill again: monitor_trello_board()
-  ```
-
-**Golden rule:** Run this in a loop during your work session to stay aware of incoming tasks.
-
-### get_card — Read Card Details
-
-```
-get_card(card_id)
-```
-
-Returns:
-- Name
-- Description
-- Labels
-- All checklists (with checkbox states)
-- Comments
-
-### add_comment — Add Note to Card
-
-```
-add_comment(card_id, text)
-```
-
-Claude comments automatically get `🤖 ` prefix to distinguish from user comments.
-
-### move_card — Move Between Columns (Deprecated)
-
-```
-move_card(card_id, list_name)
-```
-
-⚠️ **Prefer `change_status()` instead.** This skill bypasses workflow validation.
-
-### create_checklist — Create Empty Checklist
-
-```
-create_checklist(card_id, name)
-```
-
-Creates named checklist (e.g., "Tasks", "Review points").
-
-Returns checklist ID for use with `add_checklist_item()`.
-
-### add_checklist_item — Add Item to Checklist
-
-```
-add_checklist_item(checklist_id, text)
-```
-
-Adds single item. For bulk operations, use `ask_questions()` instead.
-
-### update_card_description — Update Description (Deprecated)
-
-```
-update_card_description(card_id, plan)
-```
-
-⚠️ **Prefer `set_plan()` instead.** This skill doesn't auto-backup original task.
-
-## Column Reference
-
-| Column | When | Who Moves |
-|---|---|---|
-| Inbox | User adds raw task | User |
-| Planning | Plan written, questions asked | Claude |
-| Approved | User approves plan | User |
-| In Progress | Claude starts work | Claude |
-| Review | Claude finished, report ready | Claude |
-| Done | User accepted result | User |
 
 ## Language Rules
 
-- **Structure (English):** Column names, labels, checklist names (Inbox, Planning, Questions, Answers)
-- **Content (Auto):** Plans, questions, answers match task language (Russian/English/mixed)
+- **Structure (always English):** column names, labels, checklist names (Inbox, Planning, Questions, Answers)
+- **Content (matches the task):** plans, questions, comments in the task's language
 
-**Auto-Detection:**
-- `set_plan()` detects task language automatically
-- Stores language in config as `"language": "ru"` or `"language": "en"`
-- You write plans in task language; no manual translation needed
+Detection: >70% Cyrillic → `ru`, <10% → `en`, otherwise `mixed`. Detected on
+`set_plan` and stored per scope.
 
-Examples:
-```
-Task: "Реализовать авторизацию через OAuth"
-  └─ Detected language: Russian
-  └─ Your plan: "Шаг 1: создать OAuth приложение..." (in Russian)
+## Technical Level Guide
 
-Task: "Implement OAuth authentication"
-  └─ Detected language: English
-  └─ Your plan: "Step 1: Create OAuth app..." (in English)
+Set per scope during `configure`. Controls which questions `ask_questions` keeps:
 
-Task: "Сделай login feature на английском" (Mixed)
-  └─ Detected language: Mixed
-  └─ Your plan: Can use both Russian and English freely
-```
+| Level | Who | Questions asked |
+|---|---|---|
+| **0** | Non-technical | Deadline? Budget? Goals? Success criteria? |
+| **1** | Beginner | Above + simple tech |
+| **2** | Intermediate | Above + moderate tech |
+| **3** | Expert | Everything, no filtering |
 
-**Board Structure (always English):**
-- Column: "Planning" (English)
-- Checklist: "Questions" (English)
-- Checklist: "Answers" (English)
-- Label: "plan" (English)
+Technical questions are detected by keywords (язык, код, бд, api, фреймворк / code,
+database, framework, performance, architecture, ...).
 
-**Content (matches task language):**
-- Comment: "Есть три варианта решения:" (Russian) or "Three possible solutions:" (English)
-- Question: "1) Срок сдачи?" (Russian) or "1) Deadline?" (English)
+To change: re-run `configure` with a new `tech_level`, or edit
+`.claude/trello.json` → `boards.<scope>.tech_level`.
 
-## Multiple Scopes (Apps) in One Workspace
-
-You can manage multiple applications from one project, with different Trello boards, tech levels, and languages per app.
+## Multiple Scopes in One Workspace
 
 ```
 Workspace: my-startup/
 ├── .claude/trello.json
-│   known_scopes: [clinic, crm, rental]  ← all planned apps
-│   current_scope: rental                ← currently working on
+│   known_scopes: [clinic, crm, rental]   ← all planned apps
+│   current_scope: rental                 ← currently active
 │   boards:
-│     rental:  configured (tech_level=0, language=ru)
-│     crm:     configured (tech_level=2, language=en)
-│     # clinic: marked as known but not configured
-├── rental/              (Rental app code)
-├── crm/                 (CRM app code)
-└── clinic/              (Clinic app code — planned)
+│     rental: configured (tech_level=0, language=ru)
+│     crm:    configured (tech_level=2, language=en)
+│     # clinic: known but not configured yet
+├── rental/
+├── crm/
+└── clinic/
 ```
 
-**Startup workflow:**
+Each scope has its own board, tech level, and detected language. All actions operate
+on the **current** scope; switch with `trello(action="switch_scope", scope="...")`.
 
-1. **Mark known applications** (at project start):
-   ```python
-   switch_scope(mark_known="rental,crm,clinic")
-   # Registers all 3 apps, even though not all are configured yet
-   ```
+## Configuration Files
 
-2. **Configure rental board** (start building rental app):
-   ```python
-   configure_trello(
-       board_url="https://...",
-       api_key="...",
-       token="...",
-       scope="rental",
-       tech_level=0  # non-technical
-   )
-   ```
-
-3. **Configure CRM board** (start building CRM app):
-   ```python
-   configure_trello(
-       board_url="https://...",
-       api_key="...",
-       token="...",
-       scope="crm",
-       tech_level=2  # intermediate
-   )
-   ```
-
-4. **Check progress** (see what's done):
-   ```python
-   switch_scope()
-   # Shows:
-   # ✓ rental (configured)
-   # ✓ crm (configured)
-   # ○ clinic (known, not configured)
-   ```
-
-5. **Switch between apps**:
-   ```python
-   switch_scope(scope="crm")       # Work on CRM
-   ask_questions(...)              # Tech questions allowed
-   
-   switch_scope(scope="rental")    # Work on Rental
-   ask_questions(...)              # No tech questions
-   ```
-
-6. **Configure clinic when ready**:
-   ```python
-   configure_trello(..., scope="clinic", tech_level=1)
-   # Now clinic is configured too
-   ```
-
-**Each scope has its own:**
-- Trello board (different board_id/board_url)
-- Tech level (e.g., rental=0, crm=2, clinic=1)
-- Detected language (e.g., rental=ru, crm=en, clinic=ru)
-
-## Card Lifecycle Example
-
-```
-1. User adds task to Inbox
-2. Claude: set_plan(card_id, "Вот мой план...")
-   → Moves card to Planning
-   → Saves original task to comment
-3. Claude: ask_questions(card_id, ["1) Сроки?", "2) Бюджет?"])
-   → Creates Questions/Answers checklists
-4. User: Answers questions + moves card to Approved
-5. Claude: change_status(card_id, "In Progress")
-6. Claude: ... does work ...
-7. Claude: add_comment(card_id, "Готово. Проверь результат.")
-8. Claude: change_status(card_id, "Review")
-9. User: Reviews + moves card to Done
-```
-
-## Configuration
-
-### Enable Skills
-
-The `.skills.json` file controls which skills are enabled:
+### .skills.json (which skills are loaded)
 
 ```json
 {
   "enabled_paths": [
     "development.common",
-    "development.trello"
+    "development.trello",
+    "development.branching",
+    "development.local_dev"
   ],
   "disabled_skills": []
 }
 ```
 
-### Trello Setup (.claude/trello.json)
-
-After running `configure_trello()` and marking known scopes, your config looks like:
+### .claude/trello.json (runtime config, gitignored)
 
 ```json
 {
-  "api_key": "your_key_here",
-  "token": "your_token_here",
+  "api_key": "...",
+  "token": "...",
   "current_scope": "rental",
   "known_scopes": ["clinic", "crm", "rental"],
   "boards": {
     "rental": {
-      "board_id": "68f67984d4331f5a481236bf",
-      "board_url": "https://trello.com/b/68f67984d4331f5a481236bf/rental-tasks",
+      "board_id": "...",
+      "board_url": "https://trello.com/b/.../rental-tasks",
       "board_name": "Rental App Tasks",
       "tech_level": 0,
       "language": "ru"
-    },
-    "crm": {
-      "board_id": "48e67984d4331f5a481236bf",
-      "board_url": "https://trello.com/b/48e67984d4331f5a481236bf/crm-tasks",
-      "board_name": "CRM Tasks",
-      "tech_level": 2,
-      "language": "en"
     }
   }
 }
 ```
 
-**Top-level fields:**
-- `api_key` and `token`: Shared Trello credentials (used for all scopes)
-- `current_scope`: Which board is active (e.g., "rental")
-- `known_scopes`: List of all planned applications (configured + planned)
-  - Example: `["clinic", "crm", "rental"]`
-  - Includes both configured (`rental`, `crm`) and not-yet-configured (`clinic`)
-- `boards`: Object with one entry per configured scope
-
-**Per-scope fields:**
-- `board_id`, `board_url`, `board_name`: Trello board info
-- `tech_level` (set during configure_trello):
-  - `0` = Non-technical user (no tech questions, only business/user questions)
-  - `1` = Beginner (simple tech questions allowed)
-  - `2` = Intermediate (moderate tech depth)
-  - `3` = Expert (all questions, no filtering)
-- `language` (auto-detected from task):
-  - `"ru"` = Russian (detected if >70% Cyrillic)
-  - `"en"` = English (detected if <10% Cyrillic)
-  - `"mixed"` = Mixed language
-  - `"auto"` = Not yet detected
-
-## API Credentials
-
-Store Trello credentials in `.claude/trello.env` (never commit):
-
-```
-TRELLO_API_KEY=your_key
-TRELLO_TOKEN=your_token
-TRELLO_BOARD_URL=https://trello.com/b/BOARD_ID/name
-```
-
-Get credentials from: https://trello.com/app-key
-
-## Technical Level Guide
-
-### What is "Technical Level"?
-
-It determines what kind of questions Claude asks. Set once during `configure_trello()`.
-
-| Level | Who | Questions Asked |
-|---|---|---|
-| **0** | Non-technical | Deadline? Budget? Goals? Success criteria? Who approves? |
-| **1** | Beginner | Above + simple tech (Framework? Language?) |
-| **2** | Intermediate | Above + moderate tech (Performance? Scalability?) |
-| **3** | Expert | All possible questions, maximum depth |
-
-### Tech Question Keywords
-
-Claude detects technical questions by keywords:
-
-**Russian:** язык, программирование, код, алгоритм, бд, sql, api, фреймворк, production
-
-**English:** code, programming, database, sql, api, framework, performance, architecture, caching
-
-If a question contains any of these, it's flagged as "technical" and may be skipped for non-technical users.
-
-### Changing Tech Level
-
-Current tech_level is in `.claude/trello.json`. To change:
-
-```python
-# Option 1: Reconfigure
-configure_trello(board_url, api_key, token, tech_level=2)
-
-# Option 2: Manually edit .claude/trello.json
-{
-  "tech_level": 2  # ← change this
-}
-```
+`api_key`/`token` are shared across scopes; everything else is per-board.
+**Never commit this file** — it is in `.gitignore`.
 
 ## Troubleshooting
 
-**"Error: Trello not configured"**
-- Run `configure_trello()` first with valid URL, key, and token
+Errors now carry the real HTTP status from Trello:
 
-**"Error: Card not found"**
-- Verify card_id is correct (16-char hex string)
-- Card may have been deleted
-
-**"Error: Failed to create checklist"**
-- Check that card exists and you have board permissions
-
-**"Cannot move to Approved"**
-- This is intentional. Only user can approve (workflow rule).
-- User should move card to Approved in Trello UI.
-
-**Emoji (🤖) not showing**
-- UTF-8 encoding issue. Comments are stored correctly, may display incorrectly in some clients.
-
-## Smart vs Atomic
-
-**Use Smart Skills for:** Complete workflow steps (entire "planning" or "start work" step)
-**Use Atomic Skills for:** Individual operations or when smart skill doesn't fit
-
-**Smart Skills:**
-- Enforce workflow rules
-- Auto-perform related operations
-- Simpler to use (fewer steps)
-
-**Example — Planning a task:**
-```python
-# WRONG (manual, error-prone)
-create_checklist(card_id, "Questions")
-add_checklist_item(questions_cl, "1) What?")
-add_checklist_item(questions_cl, "2) When?")
-move_card(card_id, "Planning")
-
-# RIGHT (smart skill, one call)
-ask_questions(card_id, ["1) What?", "2) When?"])
-```
+- **"Trello not configured"** — run `trello(action="configure", ...)` first
+- **"Trello API 401 ... invalid API key or token"** — regenerate credentials at https://trello.com/app-key
+- **"Trello API 404 ... not found"** — bad card/checklist id, or the token has no access to that board
+- **"Trello API 429 ... rate limited"** — slow down; retry after a pause
+- **"Cannot move to Approved/Done (user decision)"** — intentional workflow rule; the user moves these in the Trello UI

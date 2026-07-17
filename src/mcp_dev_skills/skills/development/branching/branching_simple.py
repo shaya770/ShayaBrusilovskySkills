@@ -10,11 +10,8 @@ All functions in one place for easy customization and selection.
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 SKILL = {
@@ -146,36 +143,6 @@ def _load_trello_config(workspace_root: Path) -> dict:
     }
 
 
-def _get_json(url: str) -> dict | None:
-    """GET request to Trello API."""
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            return json.load(resp)
-    except Exception:
-        return None
-
-
-def _api_post(url: str, data: dict) -> dict | None:
-    """POST request to Trello API."""
-    try:
-        body = urllib.parse.urlencode(data).encode("utf-8")
-        with urllib.request.urlopen(url, data=body, timeout=10) as resp:
-            return json.load(resp)
-    except Exception:
-        return None
-
-
-def _api_put(url: str, data: dict) -> dict | None:
-    """PUT request to Trello API."""
-    try:
-        body = urllib.parse.urlencode(data).encode("utf-8")
-        request = urllib.request.Request(url, data=body, method="PUT")
-        with urllib.request.urlopen(request, timeout=10) as resp:
-            return json.load(resp)
-    except Exception:
-        return None
-
-
 # ============================================================================
 # Actions
 # ============================================================================
@@ -193,15 +160,12 @@ def _action_assign(workspace_root: Path, card_id: str, branch_name: str, agent_i
     if not config:
         return "Error: Trello not configured"
 
+    from mcp_dev_skills.skills.development.trello.trello_api import get, post, put
+
     api_key, token, board_id = config["api_key"], config["token"], config["board_id"]
-    auth = f"key={api_key}&token={token}"
 
     # 1. Verify card exists
-    card_url = f"https://api.trello.com/1/cards/{card_id}?fields=name&{auth}"
-    card = _get_json(card_url)
-    if not card:
-        return f"Error: Card {card_id} not found"
-
+    card = get(f"cards/{card_id}", api_key, token, {"fields": "name"})
     card_name = card.get("name", "Unknown")
 
     # 2. Create git branch
@@ -210,24 +174,20 @@ def _action_assign(workspace_root: Path, card_id: str, branch_name: str, agent_i
         return f"Error: {git_msg}"
 
     # 3. Add comment to Trello
-    comment_url = f"https://api.trello.com/1/cards/{card_id}/actions/comments?{auth}"
     comment_text = (
         f"🤖 Assigned to: {agent_id}\n"
         f"📌 Branch: {branch_name}\n"
         f"📊 Status: In Progress\n"
         f"📝 Commits: 0"
     )
-    _api_post(comment_url, {"text": comment_text})
+    post(f"cards/{card_id}/actions/comments", api_key, token, {"text": comment_text})
 
     # 4. Move card to "In Progress"
-    lists_url = f"https://api.trello.com/1/boards/{board_id}/lists?fields=name&filter=open&{auth}"
-    lists = _get_json(lists_url)
-    if lists:
-        for lst in lists:
-            if lst.get("name") == "In Progress":
-                move_url = f"https://api.trello.com/1/cards/{card_id}?{auth}"
-                _api_put(move_url, {"idList": lst.get("id")})
-                break
+    lists = get(f"boards/{board_id}/lists", api_key, token, {"fields": "name", "filter": "open"})
+    for lst in lists:
+        if lst.get("name") == "In Progress":
+            put(f"cards/{card_id}", api_key, token, {"idList": lst.get("id")})
+            break
 
     return (
         f"✓ Card assigned to branch\n"
@@ -245,28 +205,23 @@ def _action_update_status(workspace_root: Path, card_id: str, branch_name: str |
     if not config:
         return "Error: Trello not configured"
 
+    from mcp_dev_skills.skills.development.trello.trello_api import get, post
+
     api_key, token = config["api_key"], config["token"]
-    auth = f"key={api_key}&token={token}"
 
     # 1. Get card
-    card_url = f"https://api.trello.com/1/cards/{card_id}?fields=name&{auth}"
-    card = _get_json(card_url)
-    if not card:
-        return f"Error: Card {card_id} not found"
-
+    card = get(f"cards/{card_id}", api_key, token, {"fields": "name"})
     card_name = card.get("name", "Unknown")
 
     # 2. Find branch name if not provided
     if not branch_name:
-        actions_url = f"https://api.trello.com/1/cards/{card_id}/actions?filter=commentCard&{auth}"
-        actions = _get_json(actions_url)
-        if actions:
-            for action in actions:
-                comment = action.get("data", {}).get("text", "")
-                match = re.search(r"📌 Branch: (\S+)", comment)
-                if match:
-                    branch_name = match.group(1)
-                    break
+        actions = get(f"cards/{card_id}/actions", api_key, token, {"filter": "commentCard"})
+        for action in actions or []:
+            comment = action.get("data", {}).get("text", "")
+            match = re.search(r"📌 Branch: (\S+)", comment)
+            if match:
+                branch_name = match.group(1)
+                break
 
     if not branch_name:
         return "Error: Could not find branch name. Provide branch_name parameter."
@@ -281,14 +236,13 @@ def _action_update_status(workspace_root: Path, card_id: str, branch_name: str |
         [f"  • {c['sha']}: {c['message'][:50]}" for c in reversed(commits)]
     ) or "No commits yet"
 
-    comment_url = f"https://api.trello.com/1/cards/{card_id}/actions/comments?{auth}"
     comment_text = (
         f"🤖 Branch Status Update\n"
         f"📌 Branch: {branch_name}\n"
         f"📊 Status: In Progress ({commits_count} commits)\n\n"
         f"Recent commits:\n{commit_list}"
     )
-    _api_post(comment_url, {"text": comment_text})
+    post(f"cards/{card_id}/actions/comments", api_key, token, {"text": comment_text})
 
     return (
         f"✓ Branch status updated\n"
@@ -328,11 +282,20 @@ def _action_list(workspace_root: Path, filter_prefix: str | None = None) -> str:
 
 def execute(workspace_root: Path, **kwargs) -> str:
     """Execute the skill."""
+    from mcp_dev_skills.skills.development.trello.trello_api import TrelloAPIError
+
     action = kwargs.get("action")
 
     if not action:
         return "Error: action is required (assign, update_status, list)"
 
+    try:
+        return _dispatch(workspace_root, action, kwargs)
+    except TrelloAPIError as exc:
+        return f"Error: {exc}"
+
+
+def _dispatch(workspace_root: Path, action: str, kwargs: dict) -> str:
     if action == "assign":
         card_id = kwargs.get("card_id")
         branch_name = kwargs.get("branch_name")

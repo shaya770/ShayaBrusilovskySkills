@@ -19,3 +19,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets — Trello credentials live here, never commit
+.claude/trello.json
