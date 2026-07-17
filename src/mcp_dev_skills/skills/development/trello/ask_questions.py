@@ -8,6 +8,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from .config_utils import get_board_config, get_api_credentials, get_tech_level
+
 SKILL = {
     "name": "ask_questions",
     "group": "development.trello",
@@ -136,7 +138,7 @@ def ask_questions(
     """Create Questions/Answers checklists and add questions.
 
     AUTOMATICALLY:
-    - Loads user's technical level from config
+    - Loads user's technical level from current scope config
     - Filters questions based on tech_level (0=non-tech skips tech questions)
     - Creates 'Questions' checklist with filtered questions
     - Creates empty 'Answers' checklist (user fills in)
@@ -145,11 +147,17 @@ def ask_questions(
     Workflow rule: Questions/Answers matched by number in item text.
                    Non-technical users (tech_level=0) never get tech questions.
     """
-    config = _load_config(workspace_root)
-    board_id = config.get("board_id")
-    api_key = config.get("api_key")
-    token = config.get("token")
-    tech_level = config.get("tech_level", 1)
+    board = get_board_config(workspace_root)
+    if not board:
+        return "Error: Trello not configured for any scope"
+
+    credentials = get_api_credentials(workspace_root)
+    if not credentials:
+        return "Error: Trello API credentials not configured"
+
+    board_id = board.get("board_id")
+    api_key, token = credentials
+    tech_level = get_tech_level(workspace_root)
 
     if not board_id or not api_key or not token:
         return "Error: Trello not configured"

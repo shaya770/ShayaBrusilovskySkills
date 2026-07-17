@@ -32,6 +32,14 @@ SKILL = {
                 "type": "string",
                 "description": "Trello API Token (generated from https://trello.com/app-key)",
             },
+            "scope": {
+                "type": "string",
+                "description": (
+                    "Application/project scope (e.g., 'rental', 'crm', 'clinic'). "
+                    "Allows multiple Trello boards in one workspace. "
+                    "Default: 'default'."
+                ),
+            },
             "tech_level": {
                 "type": "integer",
                 "enum": [0, 1, 2, 3],
@@ -130,15 +138,17 @@ def configure_trello(
     board_url: str,
     api_key: str,
     token: str,
+    scope: str = "default",
     tech_level: int = 1,
 ) -> str:
-    """Validate and configure Trello board.
+    """Validate and configure Trello board for a specific scope.
 
     Args:
         workspace_root: Project root
         board_url: Full Trello board URL
         api_key: Trello API key
         token: Trello API token
+        scope: Application/project scope (e.g., 'rental', 'crm', 'clinic')
         tech_level: User's technical level (0-3). Affects question filtering.
                     0 = non-technical (skip tech questions)
                     1 = beginner (simple tech questions)
@@ -152,28 +162,64 @@ def configure_trello(
     if not 0 <= tech_level <= 3:
         return "Error: tech_level must be 0-3"
 
+    if not scope or not scope.replace("_", "").replace("-", "").isalnum():
+        return "Error: scope must be alphanumeric (letters, numbers, dash, underscore)"
+
     success, message, board_name = _validate_and_setup_board(board_id, api_key, token)
     if not success:
         return f"Error: {message}"
 
-    # Save config
-    config = {
-        "board_id": board_id,
-        "board_url": board_url,
-        "board_name": board_name,
-        "api_key": api_key,
-        "token": token,
-        "tech_level": tech_level,
-        "language": "auto",  # Auto-detect from task description
-    }
-
+    # Load existing config or create new
     config_dir = workspace_root / ".claude"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "trello.json"
+
+    if config_path.exists():
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        config = {
+            "api_key": api_key,
+            "token": token,
+            "current_scope": scope,
+            "boards": {},
+        }
+
+    # Update API credentials (shared across all boards)
+    config["api_key"] = api_key
+    config["token"] = token
+    config["current_scope"] = scope
+
+    # Add/update this board under the scope
+    config.setdefault("boards", {})
+    config["boards"][scope] = {
+        "board_id": board_id,
+        "board_url": board_url,
+        "board_name": board_name,
+        "tech_level": tech_level,
+        "language": "auto",
+    }
+
     config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
     level_names = {0: "Non-technical", 1: "Beginner", 2: "Intermediate", 3: "Expert"}
-    return f"✓ Trello configured.\n\n{message}\n\nTechnical level: {level_names.get(tech_level, '?')}\nReady to use Trello skills."
+    lines = [
+        f"✓ Trello board configured for scope: '{scope}'",
+        "",
+        message,
+        "",
+        f"Technical level: {level_names.get(tech_level, '?')}",
+    ]
+
+    # Show all configured scopes
+    if len(config["boards"]) > 1:
+        scopes = ", ".join(sorted(config["boards"].keys()))
+        lines.append(f"Configured scopes: {scopes}")
+        lines.append(f"Currently active: '{scope}'")
+
+    lines.append("")
+    lines.append("Ready to use Trello skills.")
+
+    return "\n".join(lines)
 
 
 def execute(workspace_root: Path, **kwargs) -> str:
@@ -181,6 +227,7 @@ def execute(workspace_root: Path, **kwargs) -> str:
     board_url = kwargs.get("board_url")
     api_key = kwargs.get("api_key")
     token = kwargs.get("token")
+    scope = kwargs.get("scope", "default")
     tech_level = kwargs.get("tech_level", 1)
 
     if not board_url or not api_key or not token:
@@ -191,7 +238,8 @@ def execute(workspace_root: Path, **kwargs) -> str:
             "  - api_key: Trello API Key (from https://trello.com/app-key)\n"
             "  - token: Trello API Token (from https://trello.com/app-key)\n"
             "Optional:\n"
+            "  - scope: Application scope like 'rental', 'crm', 'clinic' (default: 'default')\n"
             "  - tech_level: 0=non-technical, 1=beginner, 2=intermediate, 3=expert (default: 1)"
         )
 
-    return configure_trello(workspace_root, board_url, api_key, token, tech_level)
+    return configure_trello(workspace_root, board_url, api_key, token, scope, tech_level)

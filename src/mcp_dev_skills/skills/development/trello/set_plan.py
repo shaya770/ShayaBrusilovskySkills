@@ -8,6 +8,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from .config_utils import get_board_config, get_api_credentials, load_config
+
 SKILL = {
     "name": "set_plan",
     "group": "development.trello",
@@ -92,17 +94,16 @@ def set_plan(workspace_root: Path, card_id: str, plan: str) -> str:
     - Saves original task description to comment (one-time)
     - Writes plan to description (preserves language of original task)
     - Adds 'plan' label
-    - Detects task language and saves it in config
+    - Detects task language and saves it in scope config
 
     Workflow rule: Plan goes in description, original stays in comments.
                    Plan language = task language (Russian/English/mixed).
     """
-    config = _load_config(workspace_root)
-    api_key = config.get("api_key")
-    token = config.get("token")
-
-    if not api_key or not token:
+    credentials = get_api_credentials(workspace_root)
+    if not credentials:
         return "Error: Trello not configured"
+
+    api_key, token = credentials
 
     auth = f"key={api_key}&token={token}"
 
@@ -133,10 +134,13 @@ def set_plan(workspace_root: Path, card_id: str, plan: str) -> str:
     if not result:
         return "Error: Failed to write plan"
 
-    # 5. Save detected language to config
-    config["language"] = detected_lang
-    config_path = workspace_root / ".claude" / "trello.json"
-    config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
+    # 5. Save detected language to current scope config
+    config = load_config(workspace_root)
+    current_scope = config.get("current_scope", "default")
+    if current_scope in config.get("boards", {}):
+        config["boards"][current_scope]["language"] = detected_lang
+        config_path = workspace_root / ".claude" / "trello.json"
+        config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
     lines = [
         "✓ Plan written to card",
