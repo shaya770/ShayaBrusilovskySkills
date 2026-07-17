@@ -7,13 +7,16 @@ This document describes all Trello integration skills and how to use them.
 ### 1. Configure Trello
 
 ```
-configure_trello(board_url, api_key, token, tech_level=1)
+configure_trello(board_url, api_key, token, scope="default", tech_level=1)
 ```
 
 **Parameters:**
 - `board_url`: Full Trello board URL
 - `api_key`: Your Trello API key (from https://trello.com/app-key)
 - `token`: Your Trello API token
+- `scope`: Application/project scope (optional, default="default")
+  - Examples: `"rental"`, `"crm"`, `"clinic"`, `"tasker"`
+  - Allows multiple boards in one project
 - `tech_level`: User's technical level (optional, default=1)
   - `0` = Non-technical (skip all technical questions)
   - `1` = Beginner
@@ -24,20 +27,80 @@ configure_trello(board_url, api_key, token, tech_level=1)
 - Validates Trello API credentials
 - Fetches board details
 - Auto-creates missing columns: Inbox, Planning, Approved, In Progress, Review, Done
-- Saves config to `.claude/trello.json` with tech_level
+- Saves config to `.claude/trello.json` with scope, tech_level, and detected language
+- Each scope can have different tech_level settings
 
-**Example:**
+**Examples:**
+
+Set up board for rental app (non-technical user):
 ```python
-# For a non-technical user
 configure_trello(
-    "https://trello.com/b/68f67984d4331f5a481236bf/board",
+    "https://trello.com/b/68f67984d4331f5a481236bf/rental-tasks",
     "your_api_key",
     "your_token",
+    scope="rental",
     tech_level=0
 )
 ```
 
-**Run this first** to set up the board and configure tech level.
+Set up board for CRM (intermediate user):
+```python
+configure_trello(
+    "https://trello.com/b/48e67984d4331f5a481236bf/crm-tasks",
+    "your_api_key",
+    "your_token",
+    scope="crm",
+    tech_level=2
+)
+```
+
+**Run this first** to set up the board and configure tech level and scope.
+
+### 1b. Switch Scope
+
+```
+switch_scope()               # List all configured scopes
+switch_scope(scope="rental") # Switch to rental app's board
+```
+
+**What it does:**
+- Lists all configured Trello scopes
+- Shows which scope is currently active (marked with "current")
+- Switches active scope (updates `current_scope` in config)
+- All subsequent Trello skills use the active scope
+
+**Example:**
+
+List all scopes:
+```python
+switch_scope()
+# Output:
+# Available Trello scopes:
+#   default
+#     Board: General Tasks
+#     Tech level: beginner
+#
+#   rental (current)
+#     Board: Rental App Tasks
+#     Tech level: non-technical
+#
+#   crm
+#     Board: CRM Tasks
+#     Tech level: intermediate
+```
+
+Switch to CRM board:
+```python
+switch_scope(scope="crm")
+# Output:
+# ✓ Switched to scope: 'crm'
+#
+# Board: CRM Tasks
+# Tech level: intermediate
+# Language: auto
+```
+
+**Use when:** Working on a different app/project in the same workspace.
 
 ## Workflow Skills (Smart & High-Level)
 
@@ -254,6 +317,49 @@ Task: "Сделай login feature на английском" (Mixed)
 - Comment: "Есть три варианта решения:" (Russian) or "Three possible solutions:" (English)
 - Question: "1) Срок сдачи?" (Russian) or "1) Deadline?" (English)
 
+## Multiple Scopes (Apps) in One Workspace
+
+You can manage multiple applications from one project:
+
+```
+Workspace: my-startup/
+├── .claude/trello.json  (stores all 3 boards)
+├── rental/              (Rental app code)
+├── crm/                 (CRM app code)
+└── clinic/              (Clinic app code)
+
+Trello config:
+  current_scope: "rental"
+  boards:
+    rental:  tech_level=0, language=ru
+    crm:     tech_level=2, language=en
+    clinic:  tech_level=1, language=ru
+```
+
+**Workflow:**
+
+1. Working on rental app:
+   ```python
+   switch_scope(scope="rental")  # Use rental board
+   ask_questions(card_id, [...]) # No tech questions (tech_level=0)
+   ```
+
+2. Switch to CRM:
+   ```python
+   switch_scope(scope="crm")      # Use CRM board
+   ask_questions(card_id, [...]) # Tech questions allowed (tech_level=2)
+   ```
+
+3. Check all scopes:
+   ```python
+   switch_scope()  # Lists all configured boards
+   ```
+
+Each scope has its own:
+- Trello board (different board_id/board_url)
+- Tech level (e.g., rental=0, crm=2)
+- Detected language (e.g., rental=ru, crm=en)
+
 ## Card Lifecycle Example
 
 ```
@@ -289,30 +395,49 @@ The `.skills.json` file controls which skills are enabled:
 
 ### Trello Setup (.claude/trello.json)
 
-After running `configure_trello()`, your config looks like:
+After running `configure_trello()`, your config stores multiple boards:
 
 ```json
 {
-  "board_id": "68f67984d4331f5a481236bf",
-  "board_url": "https://trello.com/b/68f67984d4331f5a481236bf/dev-tasks",
-  "board_name": "Dev Tasks",
   "api_key": "your_key_here",
   "token": "your_token_here",
-  "tech_level": 1,
-  "language": "ru"
+  "current_scope": "rental",
+  "boards": {
+    "rental": {
+      "board_id": "68f67984d4331f5a481236bf",
+      "board_url": "https://trello.com/b/68f67984d4331f5a481236bf/rental-tasks",
+      "board_name": "Rental App Tasks",
+      "tech_level": 0,
+      "language": "ru"
+    },
+    "crm": {
+      "board_id": "48e67984d4331f5a481236bf",
+      "board_url": "https://trello.com/b/48e67984d4331f5a481236bf/crm-tasks",
+      "board_name": "CRM Tasks",
+      "tech_level": 2,
+      "language": "en"
+    }
+  }
 }
 ```
 
-**tech_level** (set during configure_trello):
-- `0` = Non-technical user (no tech questions, only business/user questions)
-- `1` = Beginner (simple tech questions allowed)
-- `2` = Intermediate (moderate tech depth)
-- `3` = Expert (all questions, no filtering)
+**Top-level fields:**
+- `api_key` and `token`: Shared Trello credentials (used for all scopes)
+- `current_scope`: Which board is active (e.g., "rental")
+- `boards`: Object with one entry per configured scope
 
-**language** (auto-detected from task):
-- `"ru"` = Russian (detected if >70% Cyrillic)
-- `"en"` = English (detected if <10% Cyrillic)
-- `"mixed"` = Mixed language
+**Per-scope fields:**
+- `board_id`, `board_url`, `board_name`: Trello board info
+- `tech_level` (set during configure_trello):
+  - `0` = Non-technical user (no tech questions, only business/user questions)
+  - `1` = Beginner (simple tech questions allowed)
+  - `2` = Intermediate (moderate tech depth)
+  - `3` = Expert (all questions, no filtering)
+- `language` (auto-detected from task):
+  - `"ru"` = Russian (detected if >70% Cyrillic)
+  - `"en"` = English (detected if <10% Cyrillic)
+  - `"mixed"` = Mixed language
+  - `"auto"` = Not yet detected
 
 ## API Credentials
 
