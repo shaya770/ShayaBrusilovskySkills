@@ -126,6 +126,11 @@ Total: 18 skill files (+ utilities)
   - **Тестирование (Testing):** Verify everything works, catch edge cases
 - **Output:** Formatted methodology guide with examples
 
+**Development Stages:**
+- [x] Design
+- [x] Deployment
+- [ ] Testing
+
 ---
 
 ### GROUP: development.trello
