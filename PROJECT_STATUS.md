@@ -132,7 +132,7 @@ Total: 18 skill files (+ utilities)
 
 **Development Stages:**
 - [x] Design
-- [ ] Deployment (waiting for real project)
+- [x] Deployment
 - [ ] Testing
 
 ---
