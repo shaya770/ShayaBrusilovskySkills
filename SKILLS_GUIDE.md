@@ -215,6 +215,185 @@ change_status(card_id, "Review")  # OK: In Progress→Review
 # change_status(card_id, "Approved")  # Error: user must approve
 ```
 
+## Agent-Based Workflow (Branch-Per-Card)
+
+Each agent works on isolated git branch tied to Trello card.
+
+### assign_branch — Take Card & Create Branch
+
+```
+assign_branch(card_id, branch_name="auth-oauth", agent_id="agent-1")
+```
+
+**Automatically:**
+1. Creates git branch from main
+2. Adds Trello comment with branch info
+3. Moves card to "In Progress"
+
+**Example:**
+```python
+assign_branch(
+    card_id="5f8d9a2b1c3e4f5a",
+    branch_name="crm-auth-oauth",
+    agent_id="claude"
+)
+# Output:
+# ✓ Card assigned to branch
+# Card: Implement OAuth
+# Branch: crm-auth-oauth
+# Agent: claude
+# Status: In Progress
+#
+# Next steps:
+#   1. git checkout crm-auth-oauth
+#   2. Make changes and commit
+#   3. Update progress: update_branch_status(...)
+```
+
+### update_branch_status — Sync Git Status to Trello
+
+```
+update_branch_status(card_id, branch_name="auth-oauth")
+```
+
+**Automatically:**
+1. Reads git commits on branch
+2. Gets changed files list
+3. Updates Trello comment with details
+
+**Example:**
+```python
+# After working on branch
+git commit -m "add OAuth handler"
+git commit -m "add tests"
+
+# Sync to Trello
+update_branch_status(card_id="5f8d9a2b1c3e4f5a")
+# Output:
+# ✓ Branch status updated
+# Card: Implement OAuth
+# Branch: crm-auth-oauth
+# Commits: 5
+# Files changed: 3
+#
+# Changed files:
+#   • auth/oauth.py
+#   • auth/config.py
+#   • tests/test_oauth.py
+```
+
+### list_agent_branches — See All Active Work
+
+```
+list_agent_branches()              # All branches
+list_agent_branches(filter="crm-") # Only crm-* branches
+```
+
+**Shows:**
+- All branches (except main/master)
+- Commit count per branch
+- Which branch is currently checked out
+- Last commit message
+
+**Example:**
+```python
+list_agent_branches(filter="crm-")
+# Output:
+# Active Agent Branches
+# Filter: crm-*
+#
+#   crm-auth-oauth ← current
+#     Commits: 5
+#     Last: add OAuth handler
+#
+#   crm-cache-redis
+#     Commits: 3
+#     Last: implement Redis cache
+#
+# Total: 2 branch(es)
+```
+
+### create_pr_from_card — Create PR & Move to Review
+
+```
+create_pr_from_card(card_id)
+```
+
+**Automatically:**
+1. Pushes branch to origin
+2. Creates GitHub PR with:
+   - Title from card name
+   - Description with changed files
+   - Checklist for review
+3. Updates Trello with PR link
+4. Moves card to "Review"
+
+**Example:**
+```python
+# After finishing work
+create_pr_from_card(card_id="5f8d9a2b1c3e4f5a")
+# Output:
+# ✓ PR created successfully
+#
+# Card: Implement OAuth
+# Branch: crm-auth-oauth
+# PR: https://github.com/.../pull/42
+# Status: Moved to Review
+```
+
+## Agent Workflow Cycle
+
+```
+1. Take approved card from Trello
+   ↓
+2. assign_branch(card_id, "crm-auth-oauth", "claude")
+   ✓ Branch created, card → In Progress
+   ↓
+3. git checkout crm-auth-oauth
+   ↓
+4. Work: write code, commit, push
+   git commit -m "add OAuth"
+   git commit -m "add tests"
+   ↓
+5. Sync progress (optional)
+   update_branch_status(card_id)
+   ✓ Trello updated with commits
+   ↓
+6. When done
+   create_pr_from_card(card_id)
+   ✓ PR created, card → Review
+   ↓
+7. Wait for review
+   ↓
+8. User merges PR
+   ↓
+9. Card → Done
+```
+
+## Parallel Agent Example
+
+Three agents, three branches:
+
+```
+Agent 1 (Claude):
+  Card: "Implement OAuth"
+  Branch: crm-auth-oauth
+  Status: In Progress (5 commits)
+
+Agent 2 (Shaya):
+  Card: "Add caching layer"
+  Branch: crm-cache-redis
+  Status: In Progress (3 commits)
+
+Agent 3 (Bot):
+  Card: "API documentation"
+  Branch: crm-docs-api
+  Status: Waiting (blocked by agents 1 & 2)
+  
+When agents 1 & 2 create PRs:
+  → Agent 3 can start (auth + cache available)
+```
+
 ## Atomic Skills (Low-Level Operations)
 
 Use only when smart skills don't fit. Prefer smart skills.
