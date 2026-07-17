@@ -7,15 +7,37 @@ This document describes all Trello integration skills and how to use them.
 ### 1. Configure Trello
 
 ```
-configure_trello(board_url, api_key, token)
+configure_trello(board_url, api_key, token, tech_level=1)
 ```
 
+**Parameters:**
+- `board_url`: Full Trello board URL
+- `api_key`: Your Trello API key (from https://trello.com/app-key)
+- `token`: Your Trello API token
+- `tech_level`: User's technical level (optional, default=1)
+  - `0` = Non-technical (skip all technical questions)
+  - `1` = Beginner
+  - `2` = Intermediate
+  - `3` = Expert
+
+**What it does:**
 - Validates Trello API credentials
 - Fetches board details
 - Auto-creates missing columns: Inbox, Planning, Approved, In Progress, Review, Done
-- Saves config to `.claude/trello.json`
+- Saves config to `.claude/trello.json` with tech_level
 
-**Run this first** to set up the board.
+**Example:**
+```python
+# For a non-technical user
+configure_trello(
+    "https://trello.com/b/68f67984d4331f5a481236bf/board",
+    "your_api_key",
+    "your_token",
+    tech_level=0
+)
+```
+
+**Run this first** to set up the board and configure tech level.
 
 ## Workflow Skills (Smart & High-Level)
 
@@ -28,11 +50,24 @@ set_plan(card_id, plan)
 ```
 
 **Automatically:**
-1. Saves original task description to comment (one-time only)
-2. Writes plan to card description
-3. Tags card with 'plan' label
+1. Detects task language (Russian/English/mixed)
+2. Saves original task description to comment (one-time only)
+3. Writes plan to card description (on same language as task)
+4. Tags card with 'plan' label
+5. Stores detected language in config
 
-**Why this matters:** Original task is preserved in comments so you can always refer back to it.
+**Why this matters:** 
+- Original task is preserved in comments so you can always refer back to it
+- Plan language matches task language automatically (no manual translation needed)
+- For Russian tasks → plan in Russian; for English tasks → plan in English
+
+**Example:**
+```python
+# Task was: "Реализовать авторизацию через OAuth"
+# You write plan in Russian:
+set_plan(card_id, "Шаг 1: настроить OAuth провайдер...")
+# → Language auto-detected as 'ru', stored in config
+```
 
 ### ask_questions — Create Q&A Checklists
 
@@ -41,17 +76,29 @@ ask_questions(card_id, questions)
 ```
 
 **Automatically:**
-1. Creates 'Questions' checklist with numbered items
-2. Creates empty 'Answers' checklist (user fills in)
-3. Moves card to Planning
+1. Loads user's tech_level from config
+2. Filters questions based on tech_level
+3. Creates 'Questions' checklist with filtered questions
+4. Creates empty 'Answers' checklist (user fills in)
+5. Moves card to Planning
+
+**Tech-Level Filtering:**
+- **tech_level=0** (non-technical): Skips all technical questions
+  - Keeps: "When?", "Why?", "Budget?", "Deadline?"
+  - Removes: "What language?", "Database?", "Performance?"
+- **tech_level=1-3**: All questions included
 
 **Usage:**
 ```python
+# User is non-technical (tech_level=0)
 ask_questions(card_id, [
-    "1) What is the exact goal?",
-    "2) Any edge cases to consider?",
-    "3) Performance requirements?"
+    "1) What is the goal?",           # ← kept
+    "2) Deadline?",                    # ← kept
+    "3) What programming language?",   # ← SKIPPED (technical)
+    "4) Database requirements?"        # ← SKIPPED (technical)
 ])
+# Output: "Created 'Questions' checklist with 2 question(s)
+#          (skipped 2 technical questions — user level: non-technical)"
 ```
 
 **Matching:** Questions and answers are matched by number (e.g., "1) ..." → "1) ...").
@@ -174,13 +221,38 @@ update_card_description(card_id, plan)
 
 ## Language Rules
 
-- **Structure (English):** Column names, labels, checklist names
-- **Content (Russian):** Plans, questions, answers, comments, all correspondence
+- **Structure (English):** Column names, labels, checklist names (Inbox, Planning, Questions, Answers)
+- **Content (Auto):** Plans, questions, answers match task language (Russian/English/mixed)
 
-Example:
+**Auto-Detection:**
+- `set_plan()` detects task language automatically
+- Stores language in config as `"language": "ru"` or `"language": "en"`
+- You write plans in task language; no manual translation needed
+
+Examples:
+```
+Task: "Реализовать авторизацию через OAuth"
+  └─ Detected language: Russian
+  └─ Your plan: "Шаг 1: создать OAuth приложение..." (in Russian)
+
+Task: "Implement OAuth authentication"
+  └─ Detected language: English
+  └─ Your plan: "Step 1: Create OAuth app..." (in English)
+
+Task: "Сделай login feature на английском" (Mixed)
+  └─ Detected language: Mixed
+  └─ Your plan: Can use both Russian and English freely
+```
+
+**Board Structure (always English):**
 - Column: "Planning" (English)
-- Comment: "Есть три варианта решения:" (Russian)
+- Checklist: "Questions" (English)
+- Checklist: "Answers" (English)
 - Label: "plan" (English)
+
+**Content (matches task language):**
+- Comment: "Есть три варианта решения:" (Russian) or "Three possible solutions:" (English)
+- Question: "1) Срок сдачи?" (Russian) or "1) Deadline?" (English)
 
 ## Card Lifecycle Example
 
@@ -201,6 +273,8 @@ Example:
 
 ## Configuration
 
+### Enable Skills
+
 The `.skills.json` file controls which skills are enabled:
 
 ```json
@@ -213,7 +287,32 @@ The `.skills.json` file controls which skills are enabled:
 }
 ```
 
-Add "development.trello" to enabled_paths to enable all Trello skills.
+### Trello Setup (.claude/trello.json)
+
+After running `configure_trello()`, your config looks like:
+
+```json
+{
+  "board_id": "68f67984d4331f5a481236bf",
+  "board_url": "https://trello.com/b/68f67984d4331f5a481236bf/dev-tasks",
+  "board_name": "Dev Tasks",
+  "api_key": "your_key_here",
+  "token": "your_token_here",
+  "tech_level": 1,
+  "language": "ru"
+}
+```
+
+**tech_level** (set during configure_trello):
+- `0` = Non-technical user (no tech questions, only business/user questions)
+- `1` = Beginner (simple tech questions allowed)
+- `2` = Intermediate (moderate tech depth)
+- `3` = Expert (all questions, no filtering)
+
+**language** (auto-detected from task):
+- `"ru"` = Russian (detected if >70% Cyrillic)
+- `"en"` = English (detected if <10% Cyrillic)
+- `"mixed"` = Mixed language
 
 ## API Credentials
 
@@ -226,6 +325,43 @@ TRELLO_BOARD_URL=https://trello.com/b/BOARD_ID/name
 ```
 
 Get credentials from: https://trello.com/app-key
+
+## Technical Level Guide
+
+### What is "Technical Level"?
+
+It determines what kind of questions Claude asks. Set once during `configure_trello()`.
+
+| Level | Who | Questions Asked |
+|---|---|---|
+| **0** | Non-technical | Deadline? Budget? Goals? Success criteria? Who approves? |
+| **1** | Beginner | Above + simple tech (Framework? Language?) |
+| **2** | Intermediate | Above + moderate tech (Performance? Scalability?) |
+| **3** | Expert | All possible questions, maximum depth |
+
+### Tech Question Keywords
+
+Claude detects technical questions by keywords:
+
+**Russian:** язык, программирование, код, алгоритм, бд, sql, api, фреймворк, production
+
+**English:** code, programming, database, sql, api, framework, performance, architecture, caching
+
+If a question contains any of these, it's flagged as "technical" and may be skipped for non-technical users.
+
+### Changing Tech Level
+
+Current tech_level is in `.claude/trello.json`. To change:
+
+```python
+# Option 1: Reconfigure
+configure_trello(board_url, api_key, token, tech_level=2)
+
+# Option 2: Manually edit .claude/trello.json
+{
+  "tech_level": 2  # ← change this
+}
+```
 
 ## Troubleshooting
 
