@@ -1,10 +1,9 @@
-"""Skill: development_methodology — three-stage development system.
+"""Skill: methodology_three_stage — three-stage development system for ShayaBrusilovskySkills.
 
-Universal methodology for tracking development progress across any project.
-Can be applied to features, modules, skills, or entire systems.
-
-Three stages: Design → Deployment → Testing
+Development strategy: Design → Deployment → Testing
 Each stage is tracked independently and marked complete when ready.
+
+Includes: Step-by-Step Discussion Protocol (one point at a time until full agreement).
 """
 
 from __future__ import annotations
@@ -12,12 +11,13 @@ from __future__ import annotations
 from pathlib import Path
 
 SKILL = {
-    "name": "development_methodology",
-    "group": "development.common",
+    "name": "methodology_three_stage",
+    "group": "development.development_rules",
     "description": (
-        "Three-stage development system for tracking progress on any feature, module, or skill. "
+        "Three-stage development system for ShayaBrusilovskySkills project. "
         "Stages: Design (проектирование), Deployment (развертывание), Testing (тестирование). "
-        "Apply to features, skills, or entire systems — no ties to a specific project."
+        "Includes Step-by-Step Discussion Protocol: discuss one point at a time until full agreement. "
+        "Enable via .skills.json if this is your development strategy."
     ),
     "input_schema": {
         "type": "object",
