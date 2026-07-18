@@ -3,7 +3,9 @@
     "development.common",
     "development.trello",
     "development.branching",
-    "development.local_dev"
+    "development.local_dev",
+    "development.development_rules",
+    "development.server_development"
   ],
   "disabled_skills": []
 }
