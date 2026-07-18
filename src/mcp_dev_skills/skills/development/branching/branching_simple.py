@@ -1,16 +1,16 @@
-"""Skill: branching_simple — simple git branching workflow.
+"""Skill: branching_simple — parallel branch management for AI work.
 
-Complete workflow for agent branch isolation:
-1. assign_branch: create git branch for Trello card
-2. update_branch_status: sync git status to Trello
-3. list_branches: show all active branches
+Parallel branch workflow (independent from current project state):
+1. create: Create a new branch (feature/bugfix/refactor) without switching current
+2. list: Show all active branches with status
+3. finish: Complete branch work (test, push, merge to main)
 
-All functions in one place for easy customization and selection.
+No Trello integration. Branches work independently from main project.
+Config via .skills.json: "branching_mode": "simple" or "disabled"
 """
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
@@ -18,36 +18,35 @@ SKILL = {
     "name": "branching_simple",
     "group": "development.branching",
     "description": (
-        "Simple git branching workflow: assign card to branch, update status, list branches. "
-        "Complete workflow for agent branch isolation."
+        "Parallel branch management for AI work. Actions: create (new branch), "
+        "list (active branches), finish (complete + test + push + merge). "
+        "No Trello integration. Branches work independently from current project state. "
+        "Enable via .skills.json: branching_mode='simple'"
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["assign", "update_status", "list"],
+                "enum": ["create", "list", "finish"],
                 "description": (
-                    "assign: create git branch for card. "
-                    "update_status: sync git status to Trello. "
-                    "list: show all active branches."
+                    "create: Create new parallel branch. "
+                    "list: Show all active branches. "
+                    "finish: Complete work (test, push, merge to main)."
                 ),
-            },
-            "card_id": {
-                "type": "string",
-                "description": "Trello card ID (for assign and update_status)",
             },
             "branch_name": {
                 "type": "string",
-                "description": "Git branch name (e.g., 'auth-oauth'). For assign action.",
+                "description": "Branch name without type prefix (e.g., 'auth-oauth'). For create action.",
             },
-            "agent_id": {
+            "branch_type": {
                 "type": "string",
-                "description": "Agent ID (e.g., 'claude', 'agent-1'). For assign action.",
+                "enum": ["feature", "bugfix", "refactor"],
+                "description": "Branch type (creates prefix: feature/, bugfix/, refactor/). For create action.",
             },
             "filter": {
                 "type": "string",
-                "description": "Filter branches by prefix (e.g., 'crm-'). For list action.",
+                "description": "Filter branches by prefix (e.g., 'feature/'). For list action.",
             },
         },
         "required": ["action"],
@@ -75,61 +74,127 @@ def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
         return 1, "", str(e)
 
 
-def _create_branch(branch_name: str, workspace_root: Path) -> tuple[bool, str]:
-    """Create new branch from main."""
-    # Ensure we have latest main
+def _get_current_branch(workspace_root: Path) -> str | None:
+    """Get current branch name."""
+    code, branch, _ = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], workspace_root)
+    return branch if code == 0 else None
+
+
+def _branch_exists(branch_name: str, workspace_root: Path) -> bool:
+    """Check if branch exists."""
+    code, _, _ = _run_git(["rev-parse", "--verify", branch_name], workspace_root)
+    return code == 0
+
+
+def _create_branch_isolated(full_branch_name: str, workspace_root: Path) -> tuple[bool, str]:
+    """Create branch from main without switching current branch."""
+    # Fetch latest
     _run_git(["fetch", "origin"], workspace_root)
 
-    # Create branch
-    code, _, err = _run_git(["checkout", "-b", branch_name, "origin/main"], workspace_root)
+    # Create branch from main (don't switch)
+    code, _, err = _run_git(["branch", full_branch_name, "origin/main"], workspace_root)
     if code != 0:
-        code, _, err = _run_git(["checkout", "-b", branch_name, "main"], workspace_root)
+        code, _, err = _run_git(["branch", full_branch_name, "main"], workspace_root)
         if code != 0:
             return False, f"Failed to create branch: {err}"
 
-    return True, f"Branch '{branch_name}' created"
+    return True, f"Branch '{full_branch_name}' created (current branch unchanged)"
 
 
-def _get_branch_info(branch_name: str, workspace_root: Path) -> dict:
-    """Get information about a branch."""
+def _get_branch_commits(branch_name: str, workspace_root: Path) -> int:
+    """Get commit count in branch vs main."""
     code, stdout, _ = _run_git(
-        ["log", "main..HEAD", "--pretty=format:%h|%s"],
+        ["log", "main.." + branch_name, "--oneline"],
         workspace_root,
     )
-
-    commits = []
     if code == 0:
-        for line in stdout.split("\n"):
-            if line.strip():
-                parts = line.split("|")
-                if len(parts) == 2:
-                    commits.append({"sha": parts[0], "message": parts[1]})
-
-    return {
-        "exists": True,
-        "commits_count": len(commits),
-        "commits": commits,
-    }
+        return len([line for line in stdout.split("\n") if line.strip()])
+    return 0
 
 
-def _list_branches(workspace_root: Path) -> list[str]:
-    """List all local branches."""
-    code, stdout, _ = _run_git(["branch", "--format=%(refname:short)"], workspace_root)
-    if code == 0:
-        return [line.strip() for line in stdout.split("\n") if line.strip()]
-    return []
+def _list_all_branches(workspace_root: Path) -> list[tuple[str, int]]:
+    """List all local branches with commit counts."""
+    code, stdout, _ = _run_git(["branch"], workspace_root)
+    if code != 0:
+        return []
+
+    branches = []
+    for line in stdout.split("\n"):
+        line = line.strip()
+        if line:
+            # Remove leading * if it's current branch
+            branch_name = line.lstrip("* ")
+            commits = _get_branch_commits(branch_name, workspace_root)
+            branches.append((branch_name, commits))
+
+    return branches
 
 
-# ============================================================================
-# Trello utilities
-# ============================================================================
+def _run_tests(workspace_root: Path) -> tuple[bool, str]:
+    """Run tests (pytest if exists, otherwise skip)."""
+    test_indicators = ["pytest.ini", "setup.cfg", "pyproject.toml", "requirements.txt"]
+
+    has_pytest = any((workspace_root / f).exists() for f in test_indicators)
+    if not has_pytest:
+        return True, "No pytest configuration found, skipping tests"
+
+    code, stdout, stderr = _run_git(["stash"], workspace_root)  # Stash any uncommitted changes
+
+    try:
+        result = subprocess.run(
+            ["pytest", "-q"],
+            cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        test_ok = result.returncode == 0
+        output = result.stdout + result.stderr
+        return test_ok, output if output else "Tests passed"
+    except FileNotFoundError:
+        return True, "pytest not installed, skipping"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        _run_git(["stash", "pop"], workspace_root)  # Restore stashed changes
 
 
-def _get_backend(workspace_root: Path):
-    """Board backend for the current scope, or None if not configured."""
-    from mcp_dev_skills.skills.development.trello.backend import get_backend
+def _finish_branch(branch_name: str, workspace_root: Path) -> tuple[bool, str]:
+    """Finish branch: test, push, merge to main."""
+    messages = []
 
-    return get_backend(workspace_root)
+    # Test
+    messages.append("Running tests...")
+    test_ok, test_output = _run_tests(workspace_root)
+    messages.append(f"  {'✓' if test_ok else '✗'} Tests: {test_output[:100]}")
+    if not test_ok:
+        return False, "\n".join(messages)
+
+    # Push
+    messages.append("Pushing branch...")
+    code, _, err = _run_git(["push", "-u", "origin", branch_name], workspace_root)
+    if code != 0:
+        messages.append(f"  ✗ Push failed: {err}")
+        return False, "\n".join(messages)
+    messages.append(f"  ✓ Pushed to origin/{branch_name}")
+
+    # Merge
+    messages.append("Merging to main...")
+    _run_git(["checkout", "main"], workspace_root)  # Switch to main
+    code, _, err = _run_git(["merge", branch_name], workspace_root)
+    if code != 0:
+        messages.append(f"  ✗ Merge failed: {err}")
+        return False, "\n".join(messages)
+    messages.append(f"  ✓ Merged {branch_name} into main")
+
+    # Push main
+    code, _, err = _run_git(["push", "origin", "main"], workspace_root)
+    if code != 0:
+        messages.append(f"  ✗ Failed to push main: {err}")
+        return False, "\n".join(messages)
+    messages.append(f"  ✓ Pushed main to origin")
+
+    return True, "\n".join(messages)
 
 
 # ============================================================================
@@ -137,165 +202,72 @@ def _get_backend(workspace_root: Path):
 # ============================================================================
 
 
-def _action_assign(workspace_root: Path, card_id: str, branch_name: str, agent_id: str) -> str:
-    """Assign card to branch and create git branch."""
-    if not branch_name or not branch_name.replace("-", "").replace("_", "").isalnum():
-        return "Error: Invalid branch name. Use alphanumeric, dash, underscore."
-
-    if not agent_id or not agent_id.replace("-", "").replace("_", "").isalnum():
-        return "Error: Invalid agent ID. Use alphanumeric, dash, underscore."
-
-    backend = _get_backend(workspace_root)
-    if backend is None:
-        return "Error: Trello not configured"
-
-    # 1. Verify card exists
-    card = backend.get_card(card_id)
-    card_name = card["name"] or "Unknown"
-
-    # 2. Create git branch
-    success, git_msg = _create_branch(branch_name, workspace_root)
-    if not success:
-        return f"Error: {git_msg}"
-
-    # 3. Add comment to the board
-    comment_text = (
-        f"🤖 Assigned to: {agent_id}\n"
-        f"📌 Branch: {branch_name}\n"
-        f"📊 Status: In Progress\n"
-        f"📝 Commits: 0"
-    )
-    backend.add_comment(card_id, comment_text)
-
-    # 4. Move card to "In Progress"
-    for lst in backend.get_lists():
-        if lst["name"] == "In Progress":
-            backend.move_card(card_id, lst["id"])
-            break
-
-    return (
-        f"✓ Card assigned to branch\n"
-        f"Card: {card_name}\n"
-        f"Branch: {branch_name}\n"
-        f"Agent: {agent_id}\n"
-        f"Status: In Progress\n\n"
-        f"Next: git checkout {branch_name}"
-    )
-
-
-def _action_update_status(workspace_root: Path, card_id: str, branch_name: str | None = None) -> str:
-    """Update Trello card with current branch status."""
-    backend = _get_backend(workspace_root)
-    if backend is None:
-        return "Error: Trello not configured"
-
-    # 1. Get card
-    card = backend.get_card(card_id)
-    card_name = card["name"] or "Unknown"
-
-    # 2. Find branch name if not provided
+def _action_create(workspace_root: Path, branch_name: str, branch_type: str = "feature") -> str:
+    """Create new branch."""
     if not branch_name:
-        for comment in backend.get_comments(card_id):
-            match = re.search(r"📌 Branch: (\S+)", comment["text"])
-            if match:
-                branch_name = match.group(1)
-                break
+        return "Error: branch_name required"
+    if not branch_type:
+        branch_type = "feature"
 
-    if not branch_name:
-        return "Error: Could not find branch name. Provide branch_name parameter."
+    full_name = f"{branch_type}/{branch_name}"
 
-    # 3. Get git info
-    info = _get_branch_info(branch_name, workspace_root)
-    commits = info["commits"]
-    commits_count = info["commits_count"]
+    if _branch_exists(full_name, workspace_root):
+        return f"Error: Branch '{full_name}' already exists"
 
-    # 4. Add comment to Trello
-    commit_list = "\n".join(
-        [f"  • {c['sha']}: {c['message'][:50]}" for c in reversed(commits)]
-    ) or "No commits yet"
-
-    comment_text = (
-        f"🤖 Branch Status Update\n"
-        f"📌 Branch: {branch_name}\n"
-        f"📊 Status: In Progress ({commits_count} commits)\n\n"
-        f"Recent commits:\n{commit_list}"
-    )
-    backend.add_comment(card_id, comment_text)
-
-    return (
-        f"✓ Branch status updated\n"
-        f"Card: {card_name}\n"
-        f"Branch: {branch_name}\n"
-        f"Commits: {commits_count}"
-    )
+    success, message = _create_branch_isolated(full_name, workspace_root)
+    return message if success else f"Error: {message}"
 
 
 def _action_list(workspace_root: Path, filter_prefix: str | None = None) -> str:
     """List all active branches."""
-    all_branches = _list_branches(workspace_root)
-    branches = [b for b in all_branches if b not in ("main", "master", "develop")]
-
-    if filter_prefix:
-        branches = [b for b in branches if b.startswith(filter_prefix)]
+    branches = _list_all_branches(workspace_root)
 
     if not branches:
-        if filter_prefix:
-            return f"No branches found with prefix '{filter_prefix}'"
-        return "No active branches"
+        return "No branches found"
 
-    lines = ["Active Branches:\n"]
-    for branch in sorted(branches):
-        info = _get_branch_info(branch, workspace_root)
-        commits = info["commits_count"]
-        lines.append(f"  {branch} ({commits} commits)")
+    if filter_prefix:
+        branches = [(name, commits) for name, commits in branches if name.startswith(filter_prefix)]
 
-    lines.append(f"\nTotal: {len(branches)} branch(es)")
-    return "\n".join(lines)
+    if not branches:
+        return f"No branches matching '{filter_prefix}'"
+
+    result = "Active branches:\n"
+    for name, commits in sorted(branches):
+        icon = "●" if commits > 0 else "○"
+        result += f"  {icon} {name:30} ({commits} commits)\n"
+
+    return result
+
+
+def _action_finish(workspace_root: Path, branch_name: str) -> str:
+    """Finish branch work: test, push, merge."""
+    if not branch_name:
+        return "Error: branch_name required"
+
+    if not _branch_exists(branch_name, workspace_root):
+        return f"Error: Branch '{branch_name}' does not exist"
+
+    success, message = _finish_branch(branch_name, workspace_root)
+    return message
 
 
 # ============================================================================
-# Main entry point
+# Main
 # ============================================================================
 
 
-def execute(workspace_root: Path, **kwargs) -> str:
-    """Execute the skill."""
-    from mcp_dev_skills.skills.development.trello.errors import BoardAPIError
+def execute(workspace_root: Path, action: str, branch_name: str | None = None,
+            branch_type: str = "feature", filter: str | None = None, **kwargs) -> str:
+    """Execute branching action."""
 
-    action = kwargs.get("action")
-
-    if not action:
-        return "Error: action is required (assign, update_status, list)"
-
-    try:
-        return _dispatch(workspace_root, action, kwargs)
-    except BoardAPIError as exc:
-        return f"Error: {exc}"
-
-
-def _dispatch(workspace_root: Path, action: str, kwargs: dict) -> str:
-    if action == "assign":
-        card_id = kwargs.get("card_id")
-        branch_name = kwargs.get("branch_name")
-        agent_id = kwargs.get("agent_id")
-
-        if not card_id or not branch_name or not agent_id:
-            return "Error: assign requires card_id, branch_name, and agent_id"
-
-        return _action_assign(workspace_root, card_id, branch_name, agent_id)
-
-    elif action == "update_status":
-        card_id = kwargs.get("card_id")
-        branch_name = kwargs.get("branch_name")
-
-        if not card_id:
-            return "Error: update_status requires card_id"
-
-        return _action_update_status(workspace_root, card_id, branch_name)
+    if action == "create":
+        return _action_create(workspace_root, branch_name or "", branch_type)
 
     elif action == "list":
-        filter_prefix = kwargs.get("filter")
-        return _action_list(workspace_root, filter_prefix)
+        return _action_list(workspace_root, filter)
+
+    elif action == "finish":
+        return _action_finish(workspace_root, branch_name or "")
 
     else:
-        return f"Error: Unknown action '{action}'. Use: assign, update_status, list"
+        return f"Unknown action: {action}"
