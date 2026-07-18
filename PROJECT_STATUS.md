@@ -1,36 +1,37 @@
 # ShayaBrusilovskySkills — Project Status & Skills Inventory
 
-**Last updated:** 2026-07-17
-**Status:** Core architecture complete; Trello consolidated into a single skill
+**Last updated:** July 18, 2026  
+**Model:** Claude Haiku 4.5  
+**Status:** Core architecture complete, skills implemented
 
 ---
 
 ## 📊 Project Overview
 
-MCP (Model Context Protocol) server exposing a hierarchical library of **developer skills** for managing multi-app projects via **Trello** and **git branches**, with flexible configuration per project.
+MCP (Model Context Protocol) server with hierarchical library of **developer skills** for multi-app management. Includes task management (Trello), git workflows, development rules and configuration.
 
-**Total Skills:** 8 (across 4 groups)
+**Structure:** 6 skill groups + dev_main (master configuration)  
+**Total skills:** ~18 (tools + strategies)
 
 ---
 
 ## 🎯 What's Done
 
-### ✅ Core Architecture
-- [x] Hierarchical skill discovery via dot-notation paths (e.g., `development.trello`)
-- [x] Dynamic loader with wildcard support (`development.*`)
-- [x] Configuration via `.skills.json` with `enabled_paths` selection
-- [x] Sandbox security (path validation, workspace isolation)
+### ✅ Architecture
+- [x] Hierarchical skill discovery (dot-notation: `development.trello`)
+- [x] Dynamic loader with wildcards
+- [x] Configuration via `.skills.json` with `enabled_paths`
+- [x] Security (path sandbox, workspace isolation)
 - [x] MCP server with stdio transport
-- [x] Shared Trello HTTP client (`trello_api.py`) with real error reporting (401/404/429 distinguished)
-- [x] Scope-aware config everywhere (`config_utils.py`) — no more flat-format leftovers
 
-### ✅ 2026-07-17 Consolidation
-- [x] 12 separate Trello skills merged into **one `trello` skill** with an `action` parameter
-- [x] `monitor_board` (infinite polling loop — blocked the MCP server) replaced by one-shot `check_board` + standalone background monitor (`src/mcp_dev_skills/monitor.py`: silent until work, prints and exits → wakes Claude, zero tokens while idle)
-- [x] Deprecated skills removed (`move_card`, `update_card_description`) — workflow validation can no longer be bypassed
-- [x] New `workflow_state` skill — full context snapshot in one call
-- [x] `.claude/trello.json` added to `.gitignore` (credentials never committed)
-- [x] **BoardBackend abstraction** (`backend.py`) — all workflow code talks to a neutral board interface (lists/cards/comments/checklists); Trello is just the first implementation. Migration to the own web interface = implement `WebBackend`, register it in `_BACKENDS`, set `"backend": "web"` in config. Nothing else changes.
+### ✅ Implemented Skills
+- [x] **development.common** — tools (project_analyzer, file_operations, setup_skills)
+- [x] **development.trello** — task management (10 actions + workflow_state)
+- [x] **development.branching** — parallel branch management
+- [x] **development.local_dev** — local development rules
+- [x] **development.development_rules** — development methodology strategies
+- [x] **development.server_development** — autonomous development rules
+- [ ] **dev_main** — master configuration & orchestration (in progress)
 
 ---
 
@@ -38,153 +39,229 @@ MCP (Model Context Protocol) server exposing a hierarchical library of **develop
 
 ```
 ShayaBrusilovskySkills/
+├── dev_main/                          # MASTER CONFIGURATION (in progress)
+│   ├── dev_config.py                  # Orchestrator + configuration
+│
 ├── src/mcp_dev_skills/
-│   ├── server.py                    # MCP server
-│   ├── monitor.py                   # Background wait-for-work monitor (not an MCP tool)
-│   ├── loader.py                    # Dynamic skill discovery
-│   ├── config.py                    # .skills.json loading
-│   ├── security.py                  # Path sandboxing
+│   ├── server.py                      # MCP server
+│   ├── loader.py                      # Dynamic skill loading
+│   ├── config.py                      # Load .skills.json
+│   ├── security.py                    # Path sandbox
+│   │
 │   └── skills/development/
-│       ├── common/
-│       │   ├── project_analyzer.py
-│       │   ├── file_operations.py
-│       │   ├── setup_skills.py
-│       │   ├── development_methodology.py
-│       │   └── workflow_state.py    # NEW: context snapshot
-│       ├── trello/
-│       │   ├── trello.py            # THE board skill (10 actions, backend-agnostic)
-│       │   ├── backend.py           # BoardBackend interface + TrelloBackend + get_backend()
-│       │   ├── errors.py            # Neutral BoardAPIError (skills catch only this)
-│       │   ├── trello_api.py        # Trello HTTP client (used only by TrelloBackend)
-│       │   ├── config_utils.py      # Scope-aware config helpers
-│       │   └── WORKFLOW.md
-│       ├── branching/
-│       │   └── branching_simple.py  # Strategy: simple workflow (uses trello_api)
-│       └── local_dev/
-│           └── local_dev_default.py # Strategy: default local rules
-├── .skills.json                     # Configuration
-├── SKILLS_GUIDE.md                  # User documentation
-└── PROJECT_STATUS.md                # This file
+│       │
+│       ├── common/                    # TOOLS
+│       │   ├── project_analyzer.py    # 3-level project analysis
+│       │   ├── file_operations.py     # read/write/delete + access control
+│       │   └── setup_skills.py        # skill configuration
+│       │
+│       ├── trello/                    # TASK MANAGEMENT
+│       │   ├── trello.py              # 10 actions (configure, set_plan, etc)
+│       │   ├── workflow_state.py      # context snapshot
+│       │   ├── backend.py             # board abstraction
+│       │   ├── trello_api.py          # HTTP client
+│       │   ├── config_utils.py        # scope-aware config
+│       │   └── errors.py              # error handling
+│       │
+│       ├── branching/                 # BRANCH MANAGEMENT
+│       │   └── branching_simple.py    # create/list/finish parallel branches
+│       │
+│       ├── local_dev/                 # LOCAL DEV RULES
+│       │   └── local_dev_default.py   # instructions (text only)
+│       │
+│       ├── development_rules/         # METHODOLOGY STRATEGIES
+│       │   └── methodology_three_stage.py  # three stages + discussion protocol
+│       │
+│       └── server_development/        # AUTONOMOUS DEVELOPMENT
+│           └── server_development_autonomous.py  # rule: no humans
+│
+├── .skills.json                       # Configuration
+├── PROJECT_STATUS.md                  # This file (English)
+└── PROJECT_STATUS_RU.md               # This file (Russian)
+
+Total: ~18 skills + utilities
 ```
 
 ---
 
-## 📋 Detailed Skill Inventory
+## 📋 Skills Inventory by Group
 
-### GROUP: development.common (5 skills)
+### **development.common** (3 tools)
 
-#### **1. project_analyzer**
-- Three-level workspace analysis: overview → part details → exact file paths (+ level 0 tree view)
-- Detects language/framework, partitions project into logical parts
+#### 1. project_analyzer
+- **Description:** Intelligent project analysis with 3 levels
+- **Level 1:** Language, framework, project parts
+- **Level 2:** Files/functions in selected part
+- **Level 3:** Exact paths for editing
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
 
-#### **2. file_operations**
-- Safely read workspace files (path-sandboxed)
+#### 2. file_operations
+- **Description:** Unified file operations interface
+- **Actions:** read, write, delete, configure
+- **Access levels:** read_write, read_only, forbidden
+- **Config:** .project_structure.json
+- **Status:**
+  - [x] Design
+  - [ ] Deployment
+  - [ ] Testing
 
-#### **3. setup_skills**
-- List available skills and generate `.skills.json` config
-
-#### **4. development_methodology**
-- Universal three-stage system: Design → Deployment → Testing
-- **Stages:** Design [x], Deployment [x], Testing [ ]
-
-#### **5. workflow_state** *(new)*
-- One-shot snapshot for session start: current Trello scope/board, cards in working columns (with ids), git branch, dirty files, recent commits
-- Works even when Trello is not configured (shows git only)
-
----
-
-### GROUP: development.trello (1 skill, 10 actions)
-
-#### **trello** — all Trello operations dispatched by `action`
-
-| Action | What it does |
-|---|---|
-| `configure` | Validate credentials, create missing columns, save scope config |
-| `switch_scope` | List boards / switch active scope / mark planned scopes |
-| `check_board` | **One-shot** check for work in Inbox/Approved (no polling — the loop belongs to the client) |
-| `get_card` | Full card details: description, labels, checklists (with ids), comments |
-| `set_plan` | Write plan to description; auto-backup original task to comment; detect language |
-| `ask_questions` | Questions/Answers checklists, filtered by user's tech_level; moves card to Planning |
-| `change_status` | Move card **with workflow validation** (see rules below) |
-| `add_comment` | Add comment (auto-prefixed 🤖) |
-| `create_checklist` | Create empty checklist on card |
-| `add_checklist_item` | Add item to checklist |
-
-**Workflow rules (enforced in code, no bypass path):**
-- Claude may move: `Inbox→Planning`, `Approved→In Progress`, `In Progress→Review`
-- Only the user moves: `Planning→Approved`, `Review→Done`
-
-**Config** (`.claude/trello.json`, gitignored):
-```json
-{
-  "api_key": "...",
-  "token": "...",
-  "current_scope": "rental",
-  "known_scopes": ["crm", "rental"],
-  "boards": {
-    "rental": {
-      "board_id": "...",
-      "board_url": "...",
-      "board_name": "...",
-      "tech_level": 0,
-      "language": "auto"
-    }
-  }
-}
-```
+#### 3. setup_skills
+- **Description:** List skills and generate configuration
+- **Actions:** list_tree (show), generate_config (create)
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
 
 ---
 
-### GROUP: development.branching (1 skill)
+### **development.trello** (smart task management)
 
-#### **branching_simple**
-- `action="assign"`: create git branch for card, comment on Trello, move to In Progress
-- `action="update_status"`: sync commit count/list to Trello comment
-- `action="list"`: show active branches with commit counts
-- Uses the shared `trello_api` client
+#### 1. trello (10 actions)
+- **configure:** board setup + columns
+- **switch_scope:** board switching
+- **check_board:** one-shot work check
+- **get_card:** full card details
+- **set_plan:** write plan + auto-backup
+- **ask_questions:** Q&A checklists with level filter
+- **change_status:** move with workflow validation
+- **add_comment:** add comment (🤖 prefix)
+- **create_checklist:** create checklist
+- **add_checklist_item:** add item to checklist
+- **Built-in rules:** workflow validation, language detection, tech-level filter
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [x] Testing
+
+#### 2. workflow_state
+- **Description:** Context snapshot (Trello + Git) in one call
+- **Use:** Restore context after session restart
+- **Shows:** Current scope, working cards, git branch, commits
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
 
 ---
 
-### GROUP: development.local_dev (1 skill)
+### **development.branching** (branch management)
 
-#### **local_dev_default**
-- Ruleset (instructions only): local env setup, mock/test data conventions, dev config, workflow helpers
+#### 1. branching_simple
+- **Description:** Parallel branch management independent from current project
+- **Actions:**
+  - create: new branch (feature/bugfix/refactor)
+  - list: show active branches
+  - finish: test, push, merge to main
+- **Feature:** Doesn't switch current branch when creating
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
+
+---
+
+### **development.local_dev** (local rules)
+
+#### 1. local_dev_default
+- **Description:** Local development rules (instructions only)
+- **Rules:**
+  - Local DB ≠ production
+  - Test user passwords = their names
+  - Debug + verbose logging locally
+  - Visual indicator you're on local
+- **Future:** Other strategies (strict, minimal)
+- **Status:**
+  - [x] Design
+  - [ ] Deployment
+  - [ ] Testing
+
+---
+
+### **development.development_rules** (methodology strategies)
+
+#### 1. methodology_three_stage
+- **Description:** Development methodology for ShayaBrusilovskySkills
+- **Three stages:**
+  - Design (understand, architect, decide)
+  - Deployment (implement, deploy)
+  - Testing (verify, ensure quality)
+- **Built-in:** Step-by-Step Discussion Protocol (one point until full agreement)
+- **Usage:** Select in .skills.json, can choose different methodology
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
+
+---
+
+### **development.server_development** (autonomous development)
+
+#### 1. server_development_autonomous
+- **Description:** Rule: no humans present, don't stop on questions
+- **Rule:** Make decisions yourself, continue working
+- **Use:** Server development without human (programmer) presence
+- **Status:**
+  - [x] Design
+  - [x] Deployment
+  - [ ] Testing
+
+---
+
+### **dev_main** (master configuration — in progress)
+
+#### 1. dev_config (planned)
+- **Description:** Orchestrator and skill configurator
+- **Configures:** Which skills for testing, deployment, build, versioning
+- **Actions:** configure, show_config, test, deploy
+- **Status:**
+  - [ ] Design
+  - [ ] Deployment
+  - [ ] Testing
 
 ---
 
 ## 🔧 How to Use
 
-### Configuration (.skills.json)
+### Enable/disable skills
 ```json
 {
   "enabled_paths": [
     "development.common",
     "development.trello",
     "development.branching",
-    "development.local_dev"
-  ],
-  "disabled_skills": []
+    "development.local_dev",
+    "development.development_rules:methodology_three_stage",
+    "development.server_development"
+  ]
 }
 ```
 
-### Monitoring pattern
-- On demand: `trello(action='check_board')` — returns instantly.
-- Continuous: `python -m mcp_dev_skills.monitor --workspace <path> --interval 30` launched as a **background process**. Silent while idle (Claude not woken → zero tokens); prints the card list and exits when work appears, which wakes Claude to start working. Never a loop inside an MCP tool call.
-
----
-
-## 📚 Related Documentation
-
-- **SKILLS_GUIDE.md** — Full user guide with examples
-- **WORKFLOW.md** — Trello workflow protocol, conventions
-- **.claude/trello.json** — Runtime config (auto-created by `trello action='configure'`, gitignored)
+### Select different development methodology
+Replace `methodology_three_stage` with another in config (when available).
 
 ---
 
 ## 🚀 Next Steps
 
-- [ ] Expand `local_dev_default` with concrete test data examples
-- [ ] Create alternative local strategies (`local_dev_strict`, etc.)
-- [ ] Add CI/CD group for deployment skills
-- [ ] Add CLI scaffolding group for quick project setup
-- [ ] project_analyzer: skip .venv/node_modules in framework detection (known issue)
+- [ ] Implement dev_main (dev_config)
+- [ ] Add specialized analyzers to project_analyzer (Django, Flask, React)
+- [ ] Other development strategies (agile, waterfall)
+- [ ] CI/CD integration
+- [ ] Usage documentation
+
+---
+
+## 📝 Update History
+
+| Date | Event |
+|------|-------|
+| 07.18.2026 | Restructuring: development_rules + server_development groups |
+| 07.18.2026 | Moved workflow_state to development.trello |
+| 07.18.2026 | Created development.development_rules with methodology_three_stage |
+| 07.18.2026 | Created development.server_development with server_development_autonomous |
+| 07.17.2026 | Implemented file_operations, branching_simple |
+| 07.17.2026 | Created project_analyzer with 3-level analysis |
