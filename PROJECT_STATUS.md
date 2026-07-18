@@ -31,7 +31,7 @@ MCP (Model Context Protocol) server with hierarchical library of **developer ski
 - [x] **development.local_dev** — local development rules
 - [x] **development.development_rules** — development methodology strategies
 - [x] **development.server_development** — autonomous development rules
-- [ ] **dev_main** — master configuration & orchestration (in progress)
+- [x] **dev_main** — master project configuration and global settings
 
 ---
 
@@ -211,15 +211,21 @@ Total: ~18 skills + utilities
 
 ---
 
-### **dev_main** (master configuration — in progress)
+### **dev_main** (master project configuration)
 
-#### 1. dev_config (planned)
-- **Description:** Orchestrator and skill configurator
-- **Configures:** Which skills for testing, deployment, build, versioning
-- **Actions:** configure, show_config, test, deploy
+#### 1. dev_config
+- **Description:** Master configuration and global project settings
+- **Configures:**
+  - Development strategy (which methodology to use)
+  - Branching mode (simple, etc)
+  - Local development strategy
+  - Autonomous mode (no humans present)
+  - Operations (test, deploy, build, versioning, logging)
+  - Which skills are enabled
+- **Functions:** load_config, save_config, show_config, get_operation
 - **Status:**
-  - [ ] Design
-  - [ ] Deployment
+  - [x] Design
+  - [x] Deployment
   - [ ] Testing
 
 ---
