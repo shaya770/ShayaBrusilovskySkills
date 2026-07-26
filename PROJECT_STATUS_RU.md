@@ -1,273 +1,90 @@
-# ShayaBrusilovskySkills — Статус проекта и инвентарь скиллов
+# mcp-dev-skills — Статус проекта
 
-**Последнее обновление:** 18 июля 2026  
-**Модель:** Claude Haiku 4.5  
-**Статус:** Основная архитектура завершена, скиллы реализованы
-
----
-
-## 📊 Обзор проекта
-
-MCP (Model Context Protocol) сервер с иерархической библиотекой **разработчицких скиллов** для управления мультиприложениями. Включает инструменты управления (Trello, Git), правила разработки и конфигурацию.
-
-**Структура:** 6 групп скиллов + dev_main (главная конфигурация)  
-**Всего скиллов:** ~18 (инструменты + стратегии)
+**Последнее обновление:** 2026-07-26 (Фаза A)  
+**Статус:** Ядро usable; скиллы дозревают; Trello — LEGACY/FROZEN  
 
 ---
 
-## 🎯 Что сделано
+## North star
 
-### ✅ Архитектура
-- [x] Иерархическое обнаружение скиллов (dot-notation: `development.trello`)
-- [x] Динамический загрузчик с wildcards
-- [x] Конфигурация через `.skills.json` с `enabled_paths`
-- [x] Безопасность (sandbox путей, изоляция workspace)
-- [x] MCP сервер со stdio транспортом
+Портативная MCP-библиотека **умных developer-skills**: инструменты и правила разработки.  
+Прикрутил к проекту через `.skills.json` → агент работает по твоей инженерной дисциплине.
 
-### ✅ Реализованные скиллы
-- [x] **development.common** — инструменты (project_analyzer, file_operations, setup_skills)
-- [x] **development.trello** — управление задачами (10 действий + workflow_state)
-- [x] **development.branching** — параллельное управление ветками
-- [x] **development.local_dev** — правила локальной разработки
-- [x] **development.development_rules** — стратегии методологии разработки
-- [x] **development.server_development** — правила автономной разработки
-- [x] **dev_main** — главная конфигурация проекта и глобальные настройки
+Это **не** продукт про Trello. Board-pack остаётся в коде как optional frozen, по умолчанию выключен.
 
 ---
 
-## 📁 Структура проекта
+## Фаза A (сделано)
 
-```
-ShayaBrusilovskySkills/
-├── dev_main/                          # ГЛАВНАЯ конфигурация (в разработке)
-│   ├── dev_config.py                  # Оркестратор + конфиг
-│
-├── src/mcp_dev_skills/
-│   ├── server.py                      # MCP сервер
-│   ├── loader.py                      # Динамическая загрузка скиллов
-│   ├── config.py                      # Загрузка .skills.json
-│   ├── security.py                    # Sandbox путей
-│   │
-│   └── skills/development/
-│       │
-│       ├── common/                    # ИНСТРУМЕНТЫ
-│       │   ├── project_analyzer.py    # 3-уровневый анализ проекта
-│       │   ├── file_operations.py     # read/write/delete + доступ
-│       │   └── setup_skills.py        # конфиг скиллов
-│       │
-│       ├── trello/                    # УПРАВЛЕНИЕ ЗАДАЧАМИ
-│       │   ├── trello.py              # 10 действий (configure, switch_scope, set_plan, итд)
-│       │   ├── workflow_state.py      # снимок контекста Trello+Git
-│       │   ├── backend.py             # абстракция доски
-│       │   ├── trello_api.py          # HTTP клиент
-│       │   ├── config_utils.py        # конфиг с scope'ами
-│       │   └── errors.py              # ошибки
-│       │
-│       ├── branching/                 # УПРАВЛЕНИЕ ВЕТКАМИ
-│       │   └── branching_simple.py    # create/list/finish параллельные ветки
-│       │
-│       ├── local_dev/                 # ПРАВИЛА ЛОКАЛЬНОЙ РАЗРАБОТКИ
-│       │   └── local_dev_default.py   # инструкции (только текст)
-│       │
-│       ├── development_rules/         # СТРАТЕГИИ МЕТОДОЛОГИИ
-│       │   └── methodology_three_stage.py  # три этапа + step-by-step protocol
-│       │
-│       └── server_development/        # АВТОНОМНАЯ РАЗРАБОТКА
-│           └── server_development_autonomous.py  # правило: человека нет
-│
-├── .skills.json                       # Конфигурация (какие скиллы включены)
-├── PROJECT_STATUS.md                  # Этот файл (English)
-└── PROJECT_STATUS_RU.md               # Этот файл (Русский)
+- [x] Документация приведена к реальной цели (README, статусы, example config)
+- [x] Core-тесты: `security`, `config`, `loader`
+- [x] `development.trello` выключен в default-конфигах (код сохранён)
+- [x] Зафиксированы типы: tools / rulesets / legacy pack
 
-Всего: ~18 скиллов + утилиты
-```
+## Дальше (Фаза B+)
+
+- [ ] Довести `project_analyzer` / `file_operations` (поведение + тесты)
+- [ ] UX ruleset’ов (когда агент должен читать methodology/local_dev)
+- [ ] `dev_main` vs `.skills.json` — один source of truth
+- [ ] CI: pytest на PR
+- [ ] Безопасность branching (dry-run / confirm), если pack остаётся активным
 
 ---
 
-## 📋 Инвентарь скиллов по группам
+## Инвентарь скиллов
 
-### **development.common** (3 инструмента)
+### Core / recommended
 
-#### 1. project_analyzer
-- **Описание:** Умный анализ проекта с 3 уровнями
-- **Level 1:** Язык, фреймворк, части проекта
-- **Level 2:** Файлы/функции в выбранной части
-- **Level 3:** Точные пути для редактирования
-- **Статус:** 
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
+| Path | Skills | Тип | Заметки |
+| --- | --- | --- | --- |
+| `development.common` | `project_analyzer`, `file_operations`, `setup_skills` | tools | Default без `.skills.json` |
+| `development.development_rules` | `methodology_three_stage` | ruleset | |
+| `development.local_dev` | `local_dev_default` | ruleset | |
+| `development.branching` | `branching_simple` | tool | Опасно (merge/push) |
+| `development.server_development` | `server_development_autonomous` | ruleset | |
 
-#### 2. file_operations
-- **Описание:** Единый интерфейс для работы с файлами
-- **Действия:** read, write, delete, configure
-- **Контроль:** read_write, read_only, forbidden уровни
-- **Конфиг:** .project_structure.json
-- **Статус:**
-  - [x] Проектирование
-  - [ ] Развертывание
-  - [ ] Тестирование
+### LEGACY / FROZEN (не включён по умолчанию)
 
-#### 3. setup_skills
-- **Описание:** Список скиллов и генерация конфига
-- **Действия:** list_tree (показать), generate_config (создать)
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
+| Path | Skills | Заметки |
+| --- | --- | --- |
+| `development.trello` | `trello`, `workflow_state` | Board polling; path только если реально нужен |
 
 ---
 
-### **development.trello** (умное управление задачами)
+## Рекомендуемый `.skills.json`
 
-#### 1. trello (10 действий)
-- **configure:** настройка доски + создание колонок
-- **switch_scope:** переключение между досками
-- **check_board:** одноразовая проверка работы
-- **get_card:** полные детали карточки
-- **set_plan:** писать план + автосохранение оригинала
-- **ask_questions:** чеклисты Q&A с фильтром по уровню
-- **change_status:** перемещение с валидацией workflow
-- **add_comment:** добавить комментарий (префикс 🤖)
-- **create_checklist:** создать чеклист
-- **add_checklist_item:** добавить пункт в чеклист
-- **Встроенные правила:** workflow валидация, язык-определение, техвопросы фильтр
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [x] Тестирование
-
-#### 2. workflow_state
-- **Описание:** Снимок контекста (Trello + Git) в одной команде
-- **Использование:** Восстановление контекста после перезагрузки сессии
-- **Показывает:** Текущий scope, карты в работе, git ветка, коммиты
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
-
----
-
-### **development.branching** (управление ветками)
-
-#### 1. branching_simple
-- **Описание:** Параллельное управление ветками БЕЗ влияния на текущий проект
-- **Действия:** 
-  - create: создать ветку (feature/bugfix/refactor)
-  - list: показать активные ветки
-  - finish: протестировать, пушить, мержить в main
-- **Особенность:** Не переключает текущую ветку при создании
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
-
----
-
-### **development.local_dev** (правила локали)
-
-#### 1. local_dev_default
-- **Описание:** Правила локальной разработки (только инструкции)
-- **Правила:**
-  - Локальная БД ≠ продакшен
-  - Пароли тестовых юзеров = их имена
-  - Debug + verbose логирование локально
-  - Визуально ясно что ты на локали
-- **Будущее:** Другие стратегии (strict, minimal)
-- **Статус:**
-  - [x] Проектирование
-  - [ ] Развертывание
-  - [ ] Тестирование
-
----
-
-### **development.development_rules** (стратегии методологии)
-
-#### 1. methodology_three_stage
-- **Описание:** Методология разработки для ShayaBrusilovskySkills
-- **Три этапа:**
-  - Проектирование (спроектировать, решить)
-  - Развертывание (реализовать, развернуть)
-  - Тестирование (проверить, убедиться)
-- **Встроено:** Step-by-Step Discussion Protocol (один пункт за раз до согласования)
-- **Применение:** Выбирается в .skills.json, можно выбрать другую методологию
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
-
----
-
-### **development.server_development** (автономная разработка)
-
-#### 1. server_development_autonomous
-- **Описание:** Правило: человека нет, не останавливайся на вопросах
-- **Правило:** Принимай решения сам, продолжай работу
-- **Применение:** Разработка сервера без участия человека (программиста)
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
-
----
-
-### **dev_main** (главная конфигурация проекта)
-
-#### 1. dev_config
-- **Описание:** Главная конфигурация проекта и глобальные настройки
-- **Конфигурирует:**
-  - Стратегия разработки (какую методологию использовать)
-  - Режим ветвления (simple, etc)
-  - Стратегию локальной разработки
-  - Автономный режим (человека нет)
-  - Операции (test, deploy, build, versioning, logging)
-  - Какие скиллы включены
-- **Функции:** load_config, save_config, show_config, get_operation
-- **Статус:**
-  - [x] Проектирование
-  - [x] Развертывание
-  - [ ] Тестирование
-
----
-
-## 🔧 Как использовать
-
-### Включить/отключить скиллы
 ```json
 {
   "enabled_paths": [
     "development.common",
-    "development.trello",
     "development.branching",
     "development.local_dev",
-    "development.development_rules:methodology_three_stage",
+    "development.development_rules",
     "development.server_development"
-  ]
+  ],
+  "disabled_skills": []
 }
 ```
 
-### Выбрать другую методологию разработки
-Замени `methodology_three_stage` на другую в конфиге (когда появятся).
+Чтобы снова включить Trello — добавь `"development.trello"` в `enabled_paths` (код на месте).
 
 ---
 
-## 🚀 Следующие шаги
+## Архитектура (готово)
 
-- [ ] Реализовать dev_main (dev_config)
-- [ ] Добавить специализированные анализаторы к project_analyzer (Django, Flask, React)
-- [ ] Другие стратегии разработки (agile, waterfall)
-- [ ] Интеграция с CI/CD
-- [ ] Документация по использованию
+- [x] Иерархическое обнаружение (dot-notation + wildcards)
+- [x] Динамический loader
+- [x] Feature flags через `.skills.json`
+- [x] Sandbox путей
+- [x] MCP stdio server
+- [x] Interactive setup CLI
 
 ---
 
-## 📝 История обновлений
+## История
 
 | Дата | Событие |
-|------|---------|
-| 18.07.2026 | Реструктуризация: development_rules + server_development группы |
-| 18.07.2026 | Переместили workflow_state в development.trello |
-| 18.07.2026 | Создали development.development_rules с methodology_three_stage |
-| 18.07.2026 | Создали development.server_development с server_development_autonomous |
-| 17.07.2026 | Реализованы file_operations, branching_simple |
-| 17.07.2026 | Создан project_analyzer с 3-уровневым анализом |
+| --- | --- |
+| 2026-07-26 | Фаза A: docs truth, core tests, Trello frozen |
+| 2026-07-18 | development_rules + server_development; workflow_state → trello |
+| 2026-07-17 | file_operations, branching_simple, project_analyzer |

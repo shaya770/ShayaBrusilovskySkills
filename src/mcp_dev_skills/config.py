@@ -40,11 +40,14 @@ def load_skills_config(workspace_root: Path) -> SkillsConfig:
         {
           "enabled_paths": [
             "development.common",
-            "development.trello",
-            "deployment.docker"
+            "development.development_rules",
+            "development.local_dev"
           ],
           "disabled_skills": ["dangerous_skill"]
         }
+
+    Optional packs (e.g. development.trello) are LEGACY/FROZEN and not enabled
+    unless listed explicitly in enabled_paths.
     """
     config_path = workspace_root / CONFIG_FILENAME
     if not config_path.is_file():

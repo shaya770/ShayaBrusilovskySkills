@@ -1,4 +1,8 @@
-"""Tests for skill structure after the Trello consolidation."""
+"""LEGACY/FROZEN: tests for the optional Trello board pack.
+
+These tests still load ``development.trello`` explicitly so the frozen code
+does not rot. Default workspace config does not enable this path.
+"""
 
 from pathlib import Path
 import sys

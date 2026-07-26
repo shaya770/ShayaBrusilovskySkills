@@ -1,3 +1,7 @@
+> **HISTORICAL BRIEF** — original product sketch. Implementation chose **Python** (not TypeScript).
+> Current source of truth: [README.md](README.md) and [PROJECT_STATUS.md](PROJECT_STATUS.md).
+> Trello-oriented task flow in later code is **LEGACY/FROZEN**, not the product north star.
+
 \# SYSTEM SPECIFICATION: PORTABLE MULTI-PROJECT MCP SERVER WITH DYNAMIC DISCOVERY
 
 

@@ -1,11 +1,13 @@
 {
   "enabled_paths": [
     "development.common",
-    "development.trello",
     "development.branching",
     "development.local_dev",
     "development.development_rules",
     "development.server_development"
   ],
-  "disabled_skills": []
+  "disabled_skills": [],
+  "notes": {
+    "development.trello": "LEGACY/FROZEN — code kept under skills/development/trello/. Not enabled. Add the path only if you still need board polling."
+  }
 }

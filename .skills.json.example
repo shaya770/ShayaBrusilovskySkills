@@ -1,7 +1,13 @@
 {
   "enabled_paths": [
     "development.common",
-    "development.trello"
+    "development.branching",
+    "development.local_dev",
+    "development.development_rules",
+    "development.server_development"
   ],
-  "disabled_skills": []
+  "disabled_skills": [],
+  "notes": {
+    "development.trello": "LEGACY/FROZEN — to re-enable, add \"development.trello\" to enabled_paths (code still ships with the package)."
+  }
 }
