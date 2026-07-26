@@ -1,55 +1,32 @@
-# TODO — Portable Multi-Project MCP Server with Skill Hierarchy
+# TODO — Smart developer skills (MCP)
 
-План работы по спецификации из [tech.md](tech.md). Отмечайте `[x]` по мере выполнения.
+## Phase A: Foundation (DONE — 2026-07-26)
+- [x] North-star docs (README, PROJECT_STATUS, example config)
+- [x] Core tests: security, config, loader
+- [x] Freeze Trello pack (disabled in default configs; code kept)
+- [x] Document skill kinds: tools / rulesets / legacy
 
-## Phase 1: Architecture & Core (DONE)
-- [x] Инициализировать локальный git-репозиторий
-- [x] Выбрать стек: **Python**
-- [x] Создать `.gitignore`
-- [x] Рефакт структуры: `tools/` → `skills/` с вложенными папками (English)
-- [x] Реализовать `loader.py` для динамической загрузки скилов по path'ам (dot-notation)
-- [x] Добавить поддержку wildcard (`development.*`)
-- [x] Обновить `config.py` (dot-notation paths вместо enabled_skills)
-- [x] Обновить `server.py` (использовать loader)
-- [x] Создать CLI setup утилиту (`python -m mcp_dev_skills setup`)
+## Phase B: Common skills trust
+- [ ] `project_analyzer` behavior tests + clearer level contract
+- [ ] `file_operations` access-control tests + docs
+- [ ] setup CLI: recommended defaults without Trello
 
-## Phase 2: Core Skills (DONE)
-- [x] `analyze_project_structure` (development.common)
-- [x] `safe_read_file` (development.common)
-- [x] `setup_skills` (development.common)
+## Phase C: Encode experience as rules
+- [ ] methodology / local_dev / autonomous — polish + when-to-call guidance
+- [ ] Optional: definition-of-done / review gates as rulesets
 
-## Phase 3: Trello Integration (DONE)
-- [x] `configure_trello` (development.trello) — интерактивная конфигурация
-- [x] `check_trello_board` (development.trello) — зависит от конфига
-- [x] WORKFLOW.md с документацией протокола Trello
-- [x] Валидация Trello credentials (проверка подключения)
-- [x] Сохранение конфига в `.claude/trello.json`
-- [x] Автоматический retry для Trello API
-- [x] Поддержка auto_mode (пропуск Inbox-черновиков)
-- [x] Универсальность (любой board, не привязано к EzraSolution)
+## Phase D: Hygiene
+- [ ] Single config story (`dev_main` vs `.skills.json`)
+- [ ] CI: pytest (+ ruff)
+- [ ] Version/docs sync on release
 
-## Phase 4: Documentation & Polish (IN PROGRESS)
-- [x] README.md: архитектура (иерархия скилов, dot-notation)
-- [x] README.md: quick start (install, setup, config)
-- [x] README.md: примеры конфигов (.skills.json)
-- [x] README.md: как добавлять новые скиллы и группы
-- [x] README.md: Trello интеграция
-- [x] Обновлена структура скилов (только English пути)
-- [ ] Финальный коммит
+## Legacy (frozen)
+- [x] `development.trello` — optional board pack (not enabled by default)
+- [ ] Do not invest unless actively used again
 
-## Phase 5: Future Skills (TODO for later)
-- [ ] `development.django` — анализ моделей, миграций, settings
-- [ ] `development.frontend` — поиск компонентов, зависимостей
-- [ ] `deployment.docker` — анализ Dockerfile, docker-compose
-- [ ] `deployment.k8s` — парсинг K8s манифестов
-- [ ] `ci-cd.*` — GitHub Actions, GitLab CI конфиги
-
-## Как проверялось
-- Иерархия скилов загружается правильно ✅
-- `development.common` загружает 3 скилла ✅
-- `development.trello` загружает 1 скилл (check_trello_board) ✅
-- Dot-notation работает (wildcards поддерживаются) ✅
-- `.skills.json` генерируется корректно ✅
-- CLI setup работает ✅
-- Sandbox валидация работает ✅
-- Только English пути (русский только контент) ✅
+## How to verify Phase A
+```bash
+pip install -e .
+pip install pytest
+pytest
+```

@@ -28,6 +28,7 @@ SKILL = {
     "name": "trello",
     "group": "development.trello",
     "description": (
+        "[LEGACY/FROZEN] Optional board pack — not enabled by default. "
         "All Trello operations in one tool. Actions: "
         "configure (set up board + columns), switch_scope (list/switch boards), "
         "check_board (one-shot check for work in Inbox/Approved; for continuous "

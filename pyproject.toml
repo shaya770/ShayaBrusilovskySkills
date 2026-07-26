@@ -1,12 +1,17 @@
 [project]
 name = "mcp-dev-skills"
-version = "1.0.0"
-description = "Portable, model-agnostic MCP server exposing sandboxed developer skills with dynamic tool discovery."
+version = "1.1.0"
+description = "Portable MCP server: smart developer skills and rules with sandboxed tools and dynamic discovery."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "mcp>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
 ]
 
 [project.scripts]

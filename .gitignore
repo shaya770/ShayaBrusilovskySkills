@@ -12,6 +12,7 @@ env/
 # Tooling / editors
 .mypy_cache/
 .pytest_cache/
+.pytest_tmp/
 .ruff_cache/
 .idea/
 .vscode/

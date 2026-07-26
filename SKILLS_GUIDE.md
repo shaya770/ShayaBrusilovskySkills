@@ -1,5 +1,11 @@
 # Trello Skills Guide
 
+> **LEGACY / FROZEN**  
+> This pack (`development.trello`) is **not enabled by default**.  
+> Code remains under `src/mcp_dev_skills/skills/development/trello/` for optional
+> re-enable: add `"development.trello"` to `.skills.json` → `enabled_paths`.  
+> North star of this repo is **smart development skills & rules**, not board polling.
+
 All Trello operations live in **one skill: `trello`**, dispatched by the `action` parameter.
 Workflow rules are enforced in code — there is no low-level bypass path.
 

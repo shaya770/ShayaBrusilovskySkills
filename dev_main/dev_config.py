@@ -48,11 +48,11 @@ DEFAULT_CONFIG = {
         },
     },
 
-    # Skills configuration
+    # Skills configuration (source of truth for MCP is still workspace .skills.json)
     "skills": {
         "enabled_paths": [
             "development.common",
-            "development.trello",
+            # "development.trello",  # LEGACY/FROZEN — board polling pack; not used by default
             "development.branching",
             "development.local_dev",
             "development.development_rules:methodology_three_stage",

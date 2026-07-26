@@ -4,16 +4,13 @@ Skills are organized in a tree under src/mcp_dev_skills/skills/, e.g.:
 
     skills/
     ├── development/
-    │   ├── common/
-    │   │   ├── project_analyzer.py
-    │   │   └── file_operations.py
-    │   ├── trello/
-    │   │   ├── trello.py
-    │   │   └── ...
-    │   └── ...
-    └── deployment/
-        ├── docker/
-        └── ...
+    │   ├── common/              # core work tools
+    │   ├── development_rules/   # methodology / process rulesets
+    │   ├── local_dev/           # local environment rules
+    │   ├── branching/           # git branch helpers
+    │   ├── server_development/  # autonomous server rules
+    │   └── trello/              # LEGACY/FROZEN optional board pack
+    └── ...
 
 Each .py file should define:
   - SKILL: dict with name, group, description, input_schema
@@ -23,6 +20,8 @@ The loader discovers all skills and filters them by dot-notation paths:
   - "development.common" → all skills in skills/development/common/
   - "development.*" → all skills under skills/development/
   - "*" → all skills
+
+``development.trello`` ships in-tree but is not enabled by default (LEGACY/FROZEN).
 """
 
 from __future__ import annotations

@@ -12,8 +12,9 @@ from pathlib import Path
 
 SKILL = {
     "name": "workflow_state",
-    "group": "development.common",
+    "group": "development.trello",
     "description": (
+        "[LEGACY/FROZEN] Optional board pack — not enabled by default. "
         "Full workflow snapshot in one call: current Trello scope/board, "
         "cards in Inbox/Approved/In Progress/Review, git branch, dirty files, "
         "recent commits. Use at session start to restore context."
